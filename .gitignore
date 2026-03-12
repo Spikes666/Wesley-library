@@ -1,0 +1,9 @@
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.env
+dist/
+*.p8
+*.der
+missing_isbns.txt
