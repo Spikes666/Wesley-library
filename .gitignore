@@ -7,3 +7,5 @@ dist/
 *.p8
 *.der
 missing_isbns.txt
+.DS_Store
+env
