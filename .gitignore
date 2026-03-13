@@ -9,3 +9,5 @@ dist/
 missing_isbns.txt
 .DS_Store
 env
+.env
+*.p8
