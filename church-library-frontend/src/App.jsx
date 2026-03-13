@@ -14,6 +14,7 @@ const ChevronIcon   = ({ open }) => (<svg width="14" height="14" viewBox="0 0 24
 const ClipboardIcon = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>);
 const PlusIcon      = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
 const WarnIcon      = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
+const DownloadIcon  = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(val) {
@@ -23,6 +24,26 @@ function formatDate(val) {
     if (isNaN(d)) return val;
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   } catch { return val; }
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportToCSV(books) {
+  const cols = ["isbn","title","author","publisher","date","dewey","category","audience","pages","source","checked_out_by","summary","tags"];
+  const header = cols.join(",");
+  const rows = books.map(b =>
+    cols.map(c => {
+      const val = b[c] ?? "";
+      return /[,"\n]/.test(String(val)) ? `"${String(val).replace(/"/g, '""')}"` : val;
+    }).join(",")
+  );
+  const csv = [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `wesley-library-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // Normalize ISBN to digits-only uppercase for comparison
@@ -878,6 +899,7 @@ export default function App() {
           <div className="header-actions">
             <button className="btn-circ" onClick={()=>setShowCirc(true)}><ClipboardIcon /> Circulation</button>
             <button className="btn btn-outline" onClick={()=>setShowLookup(true)}><PlusIcon /> Add Book</button>
+            <button className="btn btn-outline" onClick={()=>exportToCSV(books)} disabled={books.length===0}><DownloadIcon /> Export CSV</button>
             <button className="btn btn-outline" onClick={loadBooks} disabled={loading}><RefreshIcon /> Refresh</button>
             <button className="btn btn-primary" onClick={()=>setShowUpload(true)}><UploadIcon /> Upload CSV</button>
           </div>
