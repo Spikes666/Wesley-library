@@ -2,9 +2,66 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+    <title>Wesley Monumental UMC | Savannah, GA</title>
+
+    <!-- Favicon (cross-and-flame site icon) -->
+    <link rel="icon" type="image/png" sizes="32x32"
+      href="https://www.wesleymonumental.org/wp-content/uploads/2022/12/cropped-Site-Icon-Transparent-01-32x32.png" />
+    <link rel="icon" type="image/png" sizes="192x192"
+      href="https://www.wesleymonumental.org/wp-content/uploads/2022/12/cropped-Site-Icon-Transparent-01-192x192.png" />
+    <link rel="apple-touch-icon"
+      href="https://www.wesleymonumental.org/wp-content/uploads/2022/12/cropped-Site-Icon-Transparent-01-180x180.png" />
+
+    <!-- Google Fonts: Arvo (headings), Lato (body), Open Sans (nav/UI) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Arvo:ital,wght@0,400;0,700;1,400;1,700&family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,300;1,400;1,700&family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" />
+
+    <!-- WMUMC brand tokens -->
+    <style>
+      :root {
+        --color-primary: #b42025;  /* deep red */
+        --color-accent:  #e5b43a;  /* gold */
+        --color-sage:    #75ad99;  /* sage green (buttons) */
+        --color-text:    #353535;
+        --color-muted:   #666666;
+        --color-bg:      #ffffff;
+
+        --font-heading: 'Arvo', Georgia, 'Times New Roman', serif;
+        --font-body:    'Lato', Helvetica, Arial, Lucida, sans-serif;
+        --font-ui:      'Open Sans', Helvetica, Arial, Lucida, sans-serif;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: var(--font-body);
+        font-size: 15px;
+        color: var(--color-text);
+        background-color: var(--color-bg);
+        line-height: 2em;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-heading);
+        color: var(--color-text);
+        font-weight: 700;
+        line-height: 1.2em;
+        padding-bottom: 10px;
+        margin: 0;
+      }
+
+      a {
+        color: var(--color-primary);
+        text-decoration: none;
+      }
+
+      a:hover { opacity: 0.8; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
