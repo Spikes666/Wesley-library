@@ -36,7 +36,7 @@ def get_books():
     """GET /api/books?search=&limit=&offset="""
     try:
         search = request.args.get("search", "").strip()
-        limit  = int(request.args.get("limit", 100))
+        limit  = int(request.args.get("limit", 500))
         offset = int(request.args.get("offset", 0))
         books = fetch_books(search=search, limit=limit, offset=offset)
         return jsonify({"books": books, "count": len(books)})
@@ -92,7 +92,7 @@ def do_return():
 @app.route("/api/circulation", methods=["GET"])
 def get_circulation():
     try:
-        limit = int(request.args.get("limit", 100))
+        limit = int(request.args.get("limit", 500))
         return jsonify(fetch_circulation_log(limit))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
