@@ -13,6 +13,7 @@ const CrossIcon     = () => (<svg width="14" height="14" viewBox="0 0 24 24" fil
 const ChevronIcon   = ({ open }) => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}><polyline points="6 9 12 15 18 9"/></svg>);
 const ClipboardIcon = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>);
 const PlusIcon      = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
+const WarnIcon      = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(val) {
@@ -23,6 +24,9 @@ function formatDate(val) {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   } catch { return val; }
 }
+
+// Normalize ISBN to digits-only uppercase for comparison
+const normalizeISBN = s => String(s || "").replace(/[^0-9Xx]/g, "").toUpperCase();
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toasts, removeToast }) {
@@ -45,9 +49,7 @@ function CirculationDrawer({ open, onClose, books }) {
   const [loading, setLoading]   = useState(false);
   const [borrower, setBorrower] = useState("");
 
-  useEffect(() => {
-    if (open) loadLog();
-  }, [open]);
+  useEffect(() => { if (open) loadLog(); }, [open]);
 
   const loadLog = async () => {
     setLoading(true);
@@ -58,10 +60,8 @@ function CirculationDrawer({ open, onClose, books }) {
     finally { setLoading(false); }
   };
 
-  // ── Derived data ────────────────────────────────────────────────
   const checkedOut = books.filter(b => !!b.checked_out_by);
 
-  // Per-borrower: group log checkouts by person
   const borrowerMap = {};
   log.forEach(entry => {
     if (entry.action === "checkout" && entry.checked_out_by) {
@@ -76,45 +76,34 @@ function CirculationDrawer({ open, onClose, books }) {
     .map(([name, d]) => ({ name, ...d }))
     .sort((a, b) => b.checkouts - a.checkouts);
 
-  // Stats
   const titleCount = {};
   log.forEach(e => { if (e.action === "checkout" && e.title) titleCount[e.title] = (titleCount[e.title] || 0) + 1; });
   const topBooks = Object.entries(titleCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const totalCheckouts = log.filter(e => e.action === "checkout").length;
   const totalReturns   = log.filter(e => e.action === "checkin").length;
 
-  // Filtered borrower history
   const borrowerLog = borrower
     ? log.filter(e => (e.checked_out_by || "").toLowerCase().includes(borrower.toLowerCase()))
     : [];
 
   const TABS = [
-    { id:"history",  label:"History"        },
+    { id:"history",  label:"History" },
     { id:"out",      label:`Out (${checkedOut.length})` },
-    { id:"borrower", label:"By Borrower"    },
-    { id:"stats",    label:"Stats"          },
+    { id:"borrower", label:"By Borrower" },
+    { id:"stats",    label:"Stats" },
   ];
 
   return (
     <>
-      {/* Backdrop */}
       <div className={`drawer-backdrop ${open ? "drawer-backdrop-open" : ""}`} onClick={onClose} />
-
-      {/* Drawer panel */}
       <div className={`drawer ${open ? "drawer-open" : ""}`}>
-        {/* Drawer header */}
         <div className="drawer-header">
-          <div className="drawer-title">
-            <ClipboardIcon />
-            <span>Circulation Log</span>
-          </div>
+          <div className="drawer-title"><ClipboardIcon /><span>Circulation Log</span></div>
           <div style={{ display:"flex", gap:".5rem", alignItems:"center" }}>
             <button className="icon-btn" onClick={loadLog} title="Refresh"><RefreshIcon /></button>
             <button className="icon-btn" onClick={onClose}><CloseIcon /></button>
           </div>
         </div>
-
-        {/* Tabs */}
         <div className="drawer-tabs">
           {TABS.map(t => (
             <button key={t.id} className={`drawer-tab ${tab === t.id ? "drawer-tab-active" : ""}`} onClick={() => setTab(t.id)}>
@@ -122,181 +111,131 @@ function CirculationDrawer({ open, onClose, books }) {
             </button>
           ))}
         </div>
-
-        {/* Content */}
         <div className="drawer-body">
           {loading ? (
             <div className="drawer-loading">
               <div className="loading-pulse"><div className="pulse-dot"/><div className="pulse-dot"/><div className="pulse-dot"/></div>
             </div>
-          ) : (
-
-            // ── HISTORY TAB ────────────────────────────────────────
-            tab === "history" ? (
-              log.length === 0 ? (
-                <div className="drawer-empty">No circulation history yet.</div>
-              ) : (
-                <div className="circ-list">
-                  {log.map((entry, i) => (
-                    <div key={i} className="circ-entry">
-                      <div className={`circ-dot ${entry.action === "checkout" ? "dot-out" : entry.action === "checkin" ? "dot-in" : "dot-load"}`} />
-                      <div className="circ-info">
-                        <span className="circ-title">{entry.title || entry.isbn || "Unknown"}</span>
-                        <span className="circ-meta">
-                          <span className={`circ-action ${entry.action === "checkout" ? "action-co" : "action-ci"}`}>
-                            {entry.action === "checkout" ? "Checked out" : entry.action === "checkin" ? "Returned" : entry.action}
-                          </span>
-                          {entry.checked_out_by && <> · <strong>{entry.checked_out_by}</strong></>}
+          ) : tab === "history" ? (
+            log.length === 0 ? <div className="drawer-empty">No circulation history yet.</div> : (
+              <div className="circ-list">
+                {log.map((entry, i) => (
+                  <div key={i} className="circ-entry">
+                    <div className={`circ-dot ${entry.action === "checkout" ? "dot-out" : entry.action === "checkin" ? "dot-in" : "dot-load"}`} />
+                    <div className="circ-info">
+                      <span className="circ-title">{entry.title || entry.isbn || "Unknown"}</span>
+                      <span className="circ-meta">
+                        <span className={`circ-action ${entry.action === "checkout" ? "action-co" : "action-ci"}`}>
+                          {entry.action === "checkout" ? "Checked out" : entry.action === "checkin" ? "Returned" : entry.action}
                         </span>
-                        <span className="circ-date">{formatDate(entry.checked_out_at)}</span>
-                      </div>
+                        {entry.checked_out_by && <> · <strong>{entry.checked_out_by}</strong></>}
+                      </span>
+                      <span className="circ-date">{formatDate(entry.checked_out_at)}</span>
                     </div>
-                  ))}
-                </div>
-              )
-
-            // ── CHECKED OUT TAB ────────────────────────────────────
-            ) : tab === "out" ? (
-              checkedOut.length === 0 ? (
-                <div className="drawer-empty">No books currently checked out.</div>
-              ) : (
-                <div className="circ-list">
-                  {checkedOut.map((b, i) => (
-                    <div key={i} className="circ-entry">
-                      <div className="circ-dot dot-out" />
-                      <div className="circ-info">
-                        <span className="circ-title">{b.title || b.isbn}</span>
-                        <span className="circ-meta">
-                          Checked out by <strong>{b.checked_out_by}</strong>
-                        </span>
-                        {b.category && <span className="cat-badge" style={{marginTop:".2rem",display:"inline-block"}}>{b.category}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-
-            // ── BORROWER TAB ───────────────────────────────────────
-            ) : tab === "borrower" ? (
-              <div>
-                <div style={{ padding:"0 0 .75rem 0" }}>
-                  <input
-                    className="text-input"
-                    placeholder="Search borrower name…"
-                    value={borrower}
-                    onChange={e => setBorrower(e.target.value)}
-                  />
-                </div>
-                {borrower ? (
-                  borrowerLog.length === 0 ? (
-                    <div className="drawer-empty">No records for "{borrower}".</div>
-                  ) : (
-                    <div className="circ-list">
-                      {borrowerLog.map((entry, i) => (
-                        <div key={i} className="circ-entry">
-                          <div className={`circ-dot ${entry.action === "checkout" ? "dot-out" : "dot-in"}`} />
-                          <div className="circ-info">
-                            <span className="circ-title">{entry.title || entry.isbn}</span>
-                            <span className="circ-meta">
-                              <span className={`circ-action ${entry.action === "checkout" ? "action-co" : "action-ci"}`}>
-                                {entry.action === "checkout" ? "Checked out" : "Returned"}
-                              </span>
-                            </span>
-                            <span className="circ-date">{formatDate(entry.checked_out_at)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                ) : (
-                  <div>
-                    <p className="drawer-section-label">All Borrowers</p>
-                    {borrowers.length === 0 ? (
-                      <div className="drawer-empty">No borrower data yet.</div>
-                    ) : (
-                      <div className="borrower-list">
-                        {borrowers.map((b, i) => (
-                          <div key={i} className="borrower-row" onClick={() => setBorrower(b.name)}>
-                            <div className="borrower-avatar">{b.name[0]?.toUpperCase()}</div>
-                            <div className="borrower-info">
-                              <span className="borrower-name">{b.name}</span>
-                              <span className="borrower-sub">{b.checkouts} checkout{b.checkouts !== 1 ? "s" : ""} · {b.titles.length} unique title{b.titles.length !== 1 ? "s" : ""}</span>
-                            </div>
-                            <span className="borrower-count">{b.checkouts}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                )}
+                ))}
               </div>
-
-            // ── STATS TAB ──────────────────────────────────────────
-            ) : tab === "stats" ? (
-              <div className="stats-content">
-                {/* Summary cards */}
-                <div className="stat-cards">
-                  <div className="stat-card">
-                    <div className="stat-card-num">{totalCheckouts}</div>
-                    <div className="stat-card-label">Total Checkouts</div>
+            )
+          ) : tab === "out" ? (
+            checkedOut.length === 0 ? <div className="drawer-empty">No books currently checked out.</div> : (
+              <div className="circ-list">
+                {checkedOut.map((b, i) => (
+                  <div key={i} className="circ-entry">
+                    <div className="circ-dot dot-out" />
+                    <div className="circ-info">
+                      <span className="circ-title">{b.title || b.isbn}</span>
+                      <span className="circ-meta">Checked out by <strong>{b.checked_out_by}</strong></span>
+                      {b.category && <span className="cat-badge" style={{marginTop:".2rem",display:"inline-block"}}>{b.category}</span>}
+                    </div>
                   </div>
-                  <div className="stat-card">
-                    <div className="stat-card-num">{totalReturns}</div>
-                    <div className="stat-card-label">Total Returns</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-card-num">{borrowers.length}</div>
-                    <div className="stat-card-label">Unique Borrowers</div>
-                  </div>
-                  <div className="stat-card">
-                    <div className="stat-card-num" style={{color:"var(--accent)"}}>{checkedOut.length}</div>
-                    <div className="stat-card-label">Currently Out</div>
-                  </div>
-                </div>
-
-                {/* Most borrowed */}
-                <p className="drawer-section-label" style={{marginTop:"1.25rem"}}>Most Borrowed Books</p>
-                {topBooks.length === 0 ? (
-                  <div className="drawer-empty">No data yet.</div>
-                ) : (
-                  <div className="top-books">
-                    {topBooks.map(([title, count], i) => (
-                      <div key={i} className="top-book-row">
-                        <span className="top-book-rank">#{i+1}</span>
-                        <span className="top-book-title">{title}</span>
-                        <span className="top-book-bar-wrap">
-                          <span className="top-book-bar" style={{ width: `${Math.round((count / topBooks[0][1]) * 100)}%` }} />
-                        </span>
-                        <span className="top-book-count">{count}×</span>
+                ))}
+              </div>
+            )
+          ) : tab === "borrower" ? (
+            <div>
+              <div style={{ padding:"0 0 .75rem 0" }}>
+                <input className="text-input" placeholder="Search borrower name…" value={borrower} onChange={e => setBorrower(e.target.value)} />
+              </div>
+              {borrower ? (
+                borrowerLog.length === 0 ? <div className="drawer-empty">No records for "{borrower}".</div> : (
+                  <div className="circ-list">
+                    {borrowerLog.map((entry, i) => (
+                      <div key={i} className="circ-entry">
+                        <div className={`circ-dot ${entry.action === "checkout" ? "dot-out" : "dot-in"}`} />
+                        <div className="circ-info">
+                          <span className="circ-title">{entry.title || entry.isbn}</span>
+                          <span className="circ-meta">
+                            <span className={`circ-action ${entry.action === "checkout" ? "action-co" : "action-ci"}`}>
+                              {entry.action === "checkout" ? "Checked out" : "Returned"}
+                            </span>
+                          </span>
+                          <span className="circ-date">{formatDate(entry.checked_out_at)}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
-
-                {/* Category breakdown */}
-                <p className="drawer-section-label" style={{marginTop:"1.25rem"}}>Catalog by Category</p>
-                {(() => {
-                  const cats = {};
-                  books.forEach(b => { if (b.category) cats[b.category] = (cats[b.category]||0)+1; });
-                  const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]);
-                  const max = sorted[0]?.[1] || 1;
-                  return sorted.length === 0 ? <div className="drawer-empty">No category data.</div> : (
-                    <div className="top-books">
-                      {sorted.map(([cat, count]) => (
-                        <div key={cat} className="top-book-row">
-                          <span className="cat-badge" style={{minWidth:"6rem",textAlign:"center"}}>{cat}</span>
-                          <span className="top-book-bar-wrap">
-                            <span className="top-book-bar" style={{ width:`${Math.round((count/max)*100)}%`, background:"var(--blue)" }} />
-                          </span>
-                          <span className="top-book-count">{count}</span>
+                )
+              ) : (
+                <div>
+                  <p className="drawer-section-label">All Borrowers</p>
+                  {borrowers.length === 0 ? <div className="drawer-empty">No borrower data yet.</div> : (
+                    <div className="borrower-list">
+                      {borrowers.map((b, i) => (
+                        <div key={i} className="borrower-row" onClick={() => setBorrower(b.name)}>
+                          <div className="borrower-avatar">{b.name[0]?.toUpperCase()}</div>
+                          <div className="borrower-info">
+                            <span className="borrower-name">{b.name}</span>
+                            <span className="borrower-sub">{b.checkouts} checkout{b.checkouts !== 1 ? "s" : ""} · {b.titles.length} unique title{b.titles.length !== 1 ? "s" : ""}</span>
+                          </div>
+                          <span className="borrower-count">{b.checkouts}</span>
                         </div>
                       ))}
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
+              )}
+            </div>
+          ) : tab === "stats" ? (
+            <div className="stats-content">
+              <div className="stat-cards">
+                <div className="stat-card"><div className="stat-card-num">{totalCheckouts}</div><div className="stat-card-label">Total Checkouts</div></div>
+                <div className="stat-card"><div className="stat-card-num">{totalReturns}</div><div className="stat-card-label">Total Returns</div></div>
+                <div className="stat-card"><div className="stat-card-num">{borrowers.length}</div><div className="stat-card-label">Unique Borrowers</div></div>
+                <div className="stat-card"><div className="stat-card-num" style={{color:"var(--accent)"}}>{checkedOut.length}</div><div className="stat-card-label">Currently Out</div></div>
               </div>
-            ) : null
-          )}
+              <p className="drawer-section-label" style={{marginTop:"1.25rem"}}>Most Borrowed Books</p>
+              {topBooks.length === 0 ? <div className="drawer-empty">No data yet.</div> : (
+                <div className="top-books">
+                  {topBooks.map(([title, count], i) => (
+                    <div key={i} className="top-book-row">
+                      <span className="top-book-rank">#{i+1}</span>
+                      <span className="top-book-title">{title}</span>
+                      <span className="top-book-bar-wrap"><span className="top-book-bar" style={{ width: `${Math.round((count / topBooks[0][1]) * 100)}%` }} /></span>
+                      <span className="top-book-count">{count}×</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="drawer-section-label" style={{marginTop:"1.25rem"}}>Catalog by Category</p>
+              {(() => {
+                const cats = {};
+                books.forEach(b => { if (b.category) cats[b.category] = (cats[b.category]||0)+1; });
+                const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]);
+                const max = sorted[0]?.[1] || 1;
+                return sorted.length === 0 ? <div className="drawer-empty">No category data.</div> : (
+                  <div className="top-books">
+                    {sorted.map(([cat, count]) => (
+                      <div key={cat} className="top-book-row">
+                        <span className="cat-badge" style={{minWidth:"6rem",textAlign:"center"}}>{cat}</span>
+                        <span className="top-book-bar-wrap"><span className="top-book-bar" style={{ width:`${Math.round((count/max)*100)}%`, background:"var(--blue)" }} /></span>
+                        <span className="top-book-count">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          ) : null}
         </div>
       </div>
     </>
@@ -374,21 +313,25 @@ function ReturnModal({ book, onClose, onSuccess, addToast }) {
 }
 
 // ── ISBN Lookup Modal ─────────────────────────────────────────────────────────
-function ISBNLookupModal({ onClose, onSuccess, addToast }) {
-  const [isbn, setIsbn]       = useState("");
-  const [preview, setPreview] = useState(null);
-  const [looking, setLooking] = useState(false);
-  const [saving, setSaving]   = useState(false);
+function ISBNLookupModal({ onClose, onSuccess, addToast, existingBooks }) {
+  const [isbn, setIsbn]           = useState("");
+  const [preview, setPreview]     = useState(null);
+  const [looking, setLooking]     = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [duplicate, setDuplicate] = useState(null); // existing book record if ISBN already in library
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const handleLookup = async () => {
     const val = isbn.replace(/[^0-9Xx]/g, "");
     if (val.length < 10) { addToast("Enter a valid 10 or 13-digit ISBN.", "warn"); return; }
-    setLooking(true); setPreview(null);
+    setLooking(true); setPreview(null); setDuplicate(null);
     try {
       const res = await axios.get(`/api/books/lookup?isbn=${val}`, { withCredentials: true });
       setPreview(res.data);
+      // Check against loaded catalog
+      const match = existingBooks.find(b => normalizeISBN(b.isbn) === normalizeISBN(val));
+      if (match) setDuplicate(match);
     } catch (err) { addToast(err.response?.data?.error || "Lookup failed.", "error"); }
     finally { setLooking(false); }
   };
@@ -425,7 +368,7 @@ function ISBNLookupModal({ onClose, onSuccess, addToast }) {
               className="text-input"
               placeholder="Enter ISBN-10 or ISBN-13…"
               value={isbn}
-              onChange={e => setIsbn(e.target.value)}
+              onChange={e => { setIsbn(e.target.value); setDuplicate(null); setPreview(null); }}
               onKeyDown={e => e.key === "Enter" && handleLookup()}
               style={{ flex: 1 }}
             />
@@ -433,6 +376,17 @@ function ISBNLookupModal({ onClose, onSuccess, addToast }) {
               {looking ? <span className="spinner" /> : "Look Up"}
             </button>
           </div>
+
+          {/* ── Duplicate warning ── */}
+          {duplicate && (
+            <div className="duplicate-banner">
+              <WarnIcon />
+              <div className="duplicate-banner-text">
+                <strong>Already in your library</strong>
+                <span>"{duplicate.title}" by {duplicate.author || "unknown author"} is cataloged with this ISBN. You can still add it if this is a different edition.</span>
+              </div>
+            </div>
+          )}
 
           {preview && (
             <div className="preview-card">
@@ -444,9 +398,7 @@ function ISBNLookupModal({ onClose, onSuccess, addToast }) {
               <Field label="Dewey"     value={preview.Dewey} />
               <Field label="Pages"     value={preview.Pages} />
               <Field label="Source"    value={preview.Source} />
-              {preview.Summary && (
-                <div className="preview-summary">{preview.Summary}</div>
-              )}
+              {preview.Summary && <div className="preview-summary">{preview.Summary}</div>}
               {preview.Category && (
                 <div style={{ display:"flex", gap:".4rem", marginTop:".4rem" }}>
                   <span className="cat-badge">{preview.Category}</span>
@@ -456,12 +408,11 @@ function ISBNLookupModal({ onClose, onSuccess, addToast }) {
             </div>
           )}
         </div>
-
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           {preview && (
             <button className="btn btn-primary" onClick={handleAdd} disabled={saving}>
-              {saving ? <span className="spinner" /> : <><PlusIcon /> Add to Library</>}
+              {saving ? <span className="spinner" /> : <><PlusIcon /> {duplicate ? "Add Anyway" : "Add to Library"}</>}
             </button>
           )}
         </div>
@@ -471,10 +422,11 @@ function ISBNLookupModal({ onClose, onSuccess, addToast }) {
 }
 
 // ── Upload Panel ──────────────────────────────────────────────────────────────
-function UploadPanel({ onSuccess, addToast, onClose }) {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
+function UploadPanel({ onSuccess, addToast, onClose, existingBooks }) {
+  const [file, setFile]         = useState(null);
+  const [loading, setLoading]   = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [result, setResult]     = useState(null);
   const fileRef = useRef(null);
 
   const handleDrop = e => {
@@ -486,13 +438,30 @@ function UploadPanel({ onSuccess, addToast, onClose }) {
 
   const handleUpload = async () => {
     if (!file) { addToast("Select a CSV file first.", "warn"); return; }
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
+    setLoading(true); setResult(null);
     try {
+      // Client-side duplicate scan before uploading
+      const text = await file.text();
+      const lines = text.split("\n");
+      const header = lines[0].split(",").map(h => h.trim().toUpperCase());
+      const isbnIdx = header.indexOf("ISBN");
+      const existingSet = new Set(existingBooks.map(b => normalizeISBN(b.isbn)));
+      const uploadedISBNs = isbnIdx >= 0
+        ? lines.slice(1).map(l => normalizeISBN(l.split(",")[isbnIdx])).filter(Boolean)
+        : [];
+      const duplicates = uploadedISBNs.filter(isbn => existingSet.has(isbn));
+
+      const formData = new FormData();
+      formData.append("file", file);
       const res = await axios.post(`/api/admin/upload-csv`, formData, { withCredentials: true });
+
+      setResult({ saved: res.data.saved, processed: res.data.processed, duplicates });
+
+      if (duplicates.length > 0) {
+        addToast(`${duplicates.length} ISBN(s) already in library — records updated.`, "warn");
+      }
       addToast(`✓ ${res.data.saved} book(s) saved (${res.data.processed} processed).`, "success");
-      setFile(null); onSuccess(); onClose();
+      onSuccess();
     } catch (err) { addToast(err.response?.data?.error || "Upload failed.", "error"); }
     finally { setLoading(false); }
   };
@@ -505,17 +474,38 @@ function UploadPanel({ onSuccess, addToast, onClose }) {
           <div className={`drop-zone ${dragging?"drop-zone-active":""} ${file?"drop-zone-filled":""}`}
             onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
             onDrop={handleDrop} onClick={()=>fileRef.current?.click()}>
-            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={e=>setFile(e.target.files[0])} />
+            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={e=>{setFile(e.target.files[0]);setResult(null);}} />
             {file
               ? (<><div className="drop-icon">📄</div><p className="drop-filename">{file.name}</p><p className="drop-sub">Click to change file</p></>)
               : (<><div className="drop-icon"><UploadIcon /></div><p className="drop-primary">Drop CSV here or click to browse</p><p className="drop-sub">ISBN column required · AI enrichment runs automatically</p></>)}
           </div>
+
+          {/* ── Post-upload duplicate summary ── */}
+          {result && result.duplicates.length > 0 && (
+            <div className="duplicate-banner">
+              <WarnIcon />
+              <div className="duplicate-banner-text">
+                <strong>{result.duplicates.length} duplicate ISBN{result.duplicates.length !== 1 ? "s" : ""} detected</strong>
+                <span>These were already in your library and have been updated with the latest metadata. If these are different editions, add them individually via "Add Book."</span>
+                <div className="duplicate-isbn-list">
+                  {result.duplicates.slice(0, 8).map(isbn => (
+                    <span key={isbn} className="duplicate-isbn-chip">{isbn}</span>
+                  ))}
+                  {result.duplicates.length > 8 && (
+                    <span className="duplicate-isbn-chip">+{result.duplicates.length - 8} more</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleUpload} disabled={loading||!file}>
-            {loading ? <span className="spinner" /> : <><UploadIcon /> Upload & Enrich</>}
-          </button>
+          <button className="btn btn-ghost" onClick={onClose}>{result ? "Close" : "Cancel"}</button>
+          {!result && (
+            <button className="btn btn-primary" onClick={handleUpload} disabled={loading||!file}>
+              {loading ? <span className="spinner" /> : <><UploadIcon /> Upload & Enrich</>}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -671,29 +661,24 @@ export default function App() {
           --green:#2d6a4f;--green-lt:#52b788;--green-bg:#edf7f1;
           --blue:#2a5c8b;--blue-bg:#edf3fd;
           --gold:#8b6914;--gold-bg:#fdf6e3;
+          --warn:#92600a;--warn-bg:#fef3cd;--warn-border:#f0c040;
           --border:#ddd5c8;--shadow:rgba(26,20,16,.08);
           --radius:10px;--radius-sm:6px;
           --drawer-w:480px;
         }
         body{background:var(--cream);color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;}
         .app-shell{min-height:100vh;display:flex;flex-direction:column;}
-
-        /* HEADER */
         .header{background:var(--ink);color:var(--parchment);padding:0 2.5rem;display:flex;align-items:center;justify-content:space-between;height:72px;position:sticky;top:0;z-index:200;box-shadow:0 2px 16px rgba(0,0,0,.25);}
         .header-brand{display:flex;align-items:center;gap:1rem;}
         .brand-icon{width:40px;height:40px;background:var(--accent);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:#fff;}
         .brand-title{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:var(--parchment);}
         .brand-sub{font-size:.72rem;color:var(--ink-light);letter-spacing:.08em;text-transform:uppercase;margin-top:-2px;}
         .header-actions{display:flex;align-items:center;gap:.75rem;}
-
-        /* STATS */
         .stats-bar{background:var(--warm-white);border-bottom:1px solid var(--border);padding:.85rem 2.5rem;display:flex;gap:2.5rem;align-items:center;}
         .stat-item{display:flex;align-items:baseline;gap:.4rem;}
         .stat-num{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;}
         .stat-label{font-size:.75rem;color:var(--ink-light);text-transform:uppercase;letter-spacing:.07em;}
         .stat-divider{width:1px;height:28px;background:var(--border);}
-
-        /* TOOLBAR */
         .toolbar{padding:1rem 2.5rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;background:var(--warm-white);border-bottom:1px solid var(--border);}
         .search-wrap{flex:1;min-width:220px;max-width:380px;position:relative;}
         .search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-light);pointer-events:none;}
@@ -710,8 +695,6 @@ export default function App() {
         .clear-btn{padding:.5rem .85rem;background:transparent;border:1.5px solid var(--border);border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--accent);cursor:pointer;transition:background .15s;}
         .clear-btn:hover{background:var(--accent-bg);}
         .result-count{font-size:.78rem;color:var(--ink-light);white-space:nowrap;margin-left:auto;}
-
-        /* BUTTONS */
         .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.6rem 1.2rem;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:500;border:none;cursor:pointer;transition:background .15s,transform .1s,box-shadow .15s;white-space:nowrap;}
         .btn:active{transform:scale(.97);}
         .btn-primary{background:var(--accent);color:#fff;}
@@ -728,8 +711,6 @@ export default function App() {
         .btn-circ:hover{background:rgba(245,240,232,.2);}
         .icon-btn{background:none;border:none;cursor:pointer;color:var(--ink-light);padding:.25rem;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;transition:color .15s,background .15s;}
         .icon-btn:hover{color:var(--ink);background:var(--parchment);}
-
-        /* TABLE */
         .content{flex:1;padding:2rem 2.5rem;}
         .table-wrap{background:var(--warm-white);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;box-shadow:0 2px 16px var(--shadow);}
         .table-scroll{overflow-x:auto;}
@@ -777,7 +758,14 @@ export default function App() {
         .empty-icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.4;}
         .empty-title{font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--ink-mid);margin-bottom:.4rem;}
         .table-footer{padding:.7rem 1.2rem;border-top:1px solid var(--border);background:var(--parchment);font-size:.78rem;color:var(--ink-light);display:flex;align-items:center;justify-content:space-between;}
-
+        /* DUPLICATE BANNER */
+        .duplicate-banner{display:flex;gap:.75rem;align-items:flex-start;padding:.85rem 1rem;background:var(--warn-bg);border:1.5px solid var(--warn-border);border-radius:var(--radius);color:var(--warn);animation:fadeSlide .2s ease;}
+        .duplicate-banner svg{flex-shrink:0;margin-top:.15rem;}
+        .duplicate-banner-text{display:flex;flex-direction:column;gap:.25rem;font-size:.85rem;}
+        .duplicate-banner-text strong{font-weight:600;color:var(--warn);}
+        .duplicate-banner-text span{color:var(--ink-mid);line-height:1.45;}
+        .duplicate-isbn-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.35rem;}
+        .duplicate-isbn-chip{display:inline-block;padding:.1rem .5rem;background:#fff;border:1px solid var(--warn-border);border-radius:999px;font-size:.72rem;font-family:monospace;color:var(--warn);}
         /* DRAWER */
         .drawer-backdrop{position:fixed;inset:0;background:rgba(26,20,16,0);pointer-events:none;z-index:300;transition:background .25s;}
         .drawer-backdrop-open{background:rgba(26,20,16,.4);pointer-events:all;}
@@ -795,8 +783,6 @@ export default function App() {
         .drawer-loading{display:flex;justify-content:center;padding:3rem;}
         .drawer-empty{text-align:center;color:var(--ink-light);padding:2.5rem 1rem;font-size:.9rem;}
         .drawer-section-label{font-size:.72rem;font-weight:500;color:var(--ink-light);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem;}
-
-        /* CIRC LIST */
         .circ-list{display:flex;flex-direction:column;gap:.1rem;}
         .circ-entry{display:flex;gap:.85rem;align-items:flex-start;padding:.6rem 0;border-bottom:1px solid var(--border);}
         .circ-entry:last-child{border-bottom:none;}
@@ -811,8 +797,6 @@ export default function App() {
         .action-co{color:var(--accent);}
         .action-ci{color:var(--green);}
         .circ-date{font-size:.73rem;color:var(--ink-light);}
-
-        /* BORROWER LIST */
         .borrower-list{display:flex;flex-direction:column;gap:.35rem;}
         .borrower-row{display:flex;align-items:center;gap:.85rem;padding:.65rem .75rem;border-radius:var(--radius);border:1px solid var(--border);cursor:pointer;transition:background .15s;}
         .borrower-row:hover{background:var(--parchment);}
@@ -821,8 +805,6 @@ export default function App() {
         .borrower-name{display:block;font-weight:500;color:var(--ink);font-size:.88rem;}
         .borrower-sub{display:block;font-size:.75rem;color:var(--ink-light);}
         .borrower-count{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--ink-mid);}
-
-        /* STATS */
         .stats-content{display:flex;flex-direction:column;}
         .stat-cards{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;}
         .stat-card{background:var(--parchment);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1rem;}
@@ -835,8 +817,6 @@ export default function App() {
         .top-book-bar-wrap{width:80px;height:8px;background:var(--border);border-radius:999px;overflow:hidden;flex-shrink:0;}
         .top-book-bar{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .4s;}
         .top-book-count{font-size:.78rem;color:var(--ink-light);min-width:2rem;text-align:right;}
-
-        /* MODALS */
         .modal-card-lg{max-width:560px;}
         .isbn-search-row{display:flex;gap:.75rem;align-items:center;}
         .preview-card{background:var(--parchment);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.4rem;}
@@ -845,7 +825,6 @@ export default function App() {
         .preview-label{color:var(--ink-light);min-width:70px;flex-shrink:0;}
         .preview-value{color:var(--ink-mid);}
         .preview-summary{font-size:.83rem;color:var(--ink-mid);font-style:italic;line-height:1.5;margin-top:.3rem;padding-top:.5rem;border-top:1px solid var(--border);}
-
         .modal-backdrop{position:fixed;inset:0;background:rgba(26,20,16,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:500;animation:fadeIn .15s ease;}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .modal-card{background:var(--warm-white);border-radius:14px;width:90%;max-width:460px;box-shadow:0 24px 64px rgba(0,0,0,.2);animation:slideUp .2s ease;overflow:hidden;}
@@ -868,8 +847,6 @@ export default function App() {
         .drop-primary,.drop-filename{font-size:.92rem;font-weight:500;color:var(--ink);margin-bottom:.25rem;}
         .drop-filename{color:var(--green);}
         .drop-sub{font-size:.78rem;color:var(--ink-light);}
-
-        /* TOASTS */
         .toast{display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-radius:var(--radius);min-width:280px;max-width:400px;font-size:.88rem;box-shadow:0 8px 24px rgba(0,0,0,.15);animation:toastIn .25s ease;}
         @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
         .toast span{flex:1;}
@@ -879,8 +856,6 @@ export default function App() {
         .toast-info{background:var(--ink);color:var(--parchment);}
         .toast-close{background:none;border:none;cursor:pointer;color:inherit;opacity:.7;padding:0;display:flex;}
         .toast-close:hover{opacity:1;}
-
-        /* MISC */
         .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;}
         @keyframes spin{to{transform:rotate(360deg)}}
         .loading-row td{text-align:center;padding:4rem;}
@@ -892,7 +867,6 @@ export default function App() {
       `}</style>
 
       <div className="app-shell">
-        {/* HEADER */}
         <header className="header">
           <div className="header-brand">
             <div className="brand-icon"><BookIcon /></div>
@@ -909,7 +883,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* STATS */}
         {hasFetched && (
           <div className="stats-bar">
             <div className="stat-item"><span className="stat-num">{stats.total}</span><span className="stat-label">Total Books</span></div>
@@ -920,7 +893,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TOOLBAR */}
         <div className="toolbar">
           <div className="search-wrap">
             <span className="search-icon"><SearchIcon /></span>
@@ -953,7 +925,6 @@ export default function App() {
           {hasFilters && <span className="result-count">{filtered.length} of {books.length}</span>}
         </div>
 
-        {/* TABLE */}
         <main className="content">
           <div className="table-wrap">
             <div className="table-scroll">
@@ -997,13 +968,11 @@ export default function App() {
         </main>
       </div>
 
-      {/* CIRCULATION DRAWER */}
       <CirculationDrawer open={showCirc} onClose={()=>setShowCirc(false)} books={books} />
-
-      {showLookup   && <ISBNLookupModal onSuccess={loadBooks} addToast={addToast} onClose={()=>setShowLookup(false)}/>}
+      {showLookup   && <ISBNLookupModal onSuccess={loadBooks} addToast={addToast} onClose={()=>setShowLookup(false)} existingBooks={books}/>}
       {checkoutBook && <CheckoutModal book={checkoutBook} onClose={()=>setCheckoutBook(null)} onSuccess={loadBooks} addToast={addToast}/>}
       {returnBook   && <ReturnModal   book={returnBook}   onClose={()=>setReturnBook(null)}   onSuccess={loadBooks} addToast={addToast}/>}
-      {showUpload   && <UploadPanel   onSuccess={loadBooks} addToast={addToast} onClose={()=>setShowUpload(false)}/>}
+      {showUpload   && <UploadPanel   onSuccess={loadBooks} addToast={addToast} onClose={()=>setShowUpload(false)} existingBooks={books}/>}
       <Toast toasts={toasts} removeToast={removeToast}/>
     </>
   );
