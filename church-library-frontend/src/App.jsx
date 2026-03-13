@@ -16,6 +16,33 @@ const PlusIcon      = () => (<svg width="17" height="17" viewBox="0 0 24 24" fil
 const WarnIcon      = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
 const DownloadIcon  = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
 
+// ── Book Cover ────────────────────────────────────────────────────────────────
+function BookCover({ url, title, size = "sm" }) {
+  const [err, setErr] = React.useState(false);
+  const dim = size === "lg"
+    ? { width: 90, height: 120, fontSize: "1.8rem" }
+    : { width: 36, height: 48, fontSize: ".85rem" };
+  const style = {
+    width: dim.width, height: dim.height, flexShrink: 0,
+    borderRadius: 4, overflow: "hidden",
+    background: "var(--parchment)", border: "1px solid var(--border)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+  };
+  if (url && !err) {
+    return (
+      <div style={style}>
+        <img src={url} alt={title || "cover"} onError={() => setErr(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...style, color: "var(--ink-light)", fontSize: dim.fontSize }}>
+      📖
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(val) {
   if (!val) return "—";
@@ -28,7 +55,7 @@ function formatDate(val) {
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 function exportToCSV(books) {
-  const cols = ["isbn","title","author","publisher","date","dewey","category","audience","pages","source","checked_out_by","summary","tags"];
+  const cols = ["isbn","title","author","publisher","date","dewey","category","audience","pages","source","checked_out_by","summary","tags","image_url"];
   const header = cols.join(",");
   const rows = books.map(b =>
     cols.map(c => {
@@ -411,7 +438,12 @@ function ISBNLookupModal({ onClose, onSuccess, addToast, existingBooks }) {
 
           {preview && (
             <div className="preview-card">
-              <div className="preview-title">{preview.Title || "Unknown Title"}</div>
+              <div style={{display:"flex",gap:"1rem",alignItems:"flex-start",marginBottom:".5rem"}}>
+                <BookCover url={preview.Image_URL} title={preview.Title} size="lg" />
+                <div style={{flex:1}}>
+                  <div className="preview-title">{preview.Title || "Unknown Title"}</div>
+                </div>
+              </div>
               <Field label="Author"    value={preview.Author} />
               <Field label="Publisher" value={preview.Publisher} />
               <Field label="Year"      value={preview.Date} />
@@ -543,7 +575,9 @@ function BookRow({ book, onCheckout, onReturn, index }) {
     <>
       <tr className="book-row" style={{ animationDelay:`${Math.min(index*20,400)}ms` }}>
         <td className="td-title">
-          <div className="title-cell">
+          <div className="title-cell" style={{display:"flex",gap:".75rem",alignItems:"flex-start"}}>
+            <BookCover url={book.image_url} title={book.title} size="sm" />
+            <div style={{flex:1,minWidth:0}}>
             <div className="title-top">
               <span className="title-text">{book.title || "—"}</span>
               {(book.summary || tags.length > 0) && (
@@ -555,6 +589,7 @@ function BookRow({ book, onCheckout, onReturn, index }) {
             <div className="title-meta">
               {book.category && <span className="cat-badge">{book.category}</span>}
               {book.audience && <span className="aud-badge">{book.audience}</span>}
+            </div>
             </div>
           </div>
         </td>

@@ -2,6 +2,7 @@
 enrich.py — Metadata + AI enrichment for Wesley Library.
 Fetches bibliographic data from LoC → OpenLibrary → Google Books,
 then calls Claude to add SUMMARY, AUDIENCE, CATEGORY, TAGS.
+Also captures cover image URL from Google Books or OpenLibrary.
 """
 
 import os
@@ -20,6 +21,41 @@ def _get_client():
     if _anthropic_client is None:
         _anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     return _anthropic_client
+
+
+# ── Cover image helpers ───────────────────────────────────────────────────────
+
+def fetch_cover_image_url(isbn: str) -> str | None:
+    """
+    Try to find a cover image URL for the given ISBN.
+    Priority: Google Books → OpenLibrary covers API.
+    Returns a URL string or None.
+    """
+    # Google Books
+    try:
+        url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        items = data.get("items")
+        if items:
+            image_links = items[0].get("volumeInfo", {}).get("imageLinks", {})
+            for size in ("large", "medium", "thumbnail", "smallThumbnail"):
+                img = image_links.get(size)
+                if img:
+                    return img.replace("http://", "https://")
+    except Exception:
+        pass
+
+    # OpenLibrary covers API fallback
+    try:
+        url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false"
+        resp = requests.get(url, timeout=10, allow_redirects=True)
+        if resp.status_code == 200 and "image" in resp.headers.get("Content-Type", ""):
+            return url
+    except Exception:
+        pass
+
+    return None
 
 
 # ── Bibliographic sources ─────────────────────────────────────────────────────
@@ -55,6 +91,7 @@ def fetch_loc_metadata(isbn):
         "CatalogNumber": None,
         "Pages": clean(pages.text) if pages is not None else None,
         "Source": "Library of Congress",
+        "Image_URL": None,  # LoC doesn't provide images
     }
 
 def fetch_openlibrary_metadata(isbn):
@@ -65,6 +102,9 @@ def fetch_openlibrary_metadata(isbn):
     book = data.get(f"ISBN:{isbn}")
     if not book:
         raise ValueError("Not found in OpenLibrary")
+    cover = None
+    if book.get("cover"):
+        cover = book["cover"].get("large") or book["cover"].get("medium") or book["cover"].get("small")
     return {
         "ISBN": isbn, "Title": clean(book.get("title")),
         "Author": ", ".join(a['name'] for a in book.get("authors", [])) if book.get("authors") else None,
@@ -72,6 +112,7 @@ def fetch_openlibrary_metadata(isbn):
         "Edition": None, "Date": book.get("publish_date"),
         "Dewey": None, "LCCN": None, "CatalogNumber": None,
         "Pages": book.get("number_of_pages"), "Source": "OpenLibrary",
+        "Image_URL": cover,
     }
 
 def fetch_google_books_metadata(isbn):
@@ -83,6 +124,13 @@ def fetch_google_books_metadata(isbn):
     if not items:
         raise ValueError("Not found in Google Books")
     volume = items[0]["volumeInfo"]
+    image_links = volume.get("imageLinks", {})
+    cover = None
+    for size in ("large", "medium", "thumbnail", "smallThumbnail"):
+        img = image_links.get(size)
+        if img:
+            cover = img.replace("http://", "https://")
+            break
     return {
         "ISBN": isbn, "Title": clean(volume.get("title")),
         "Author": ", ".join(volume.get("authors", [])) if volume.get("authors") else None,
@@ -91,20 +139,25 @@ def fetch_google_books_metadata(isbn):
         "LCCN": None, "CatalogNumber": None,
         "Pages": str(volume.get("pageCount")) if volume.get("pageCount") else None,
         "Source": "Google Books",
+        "Image_URL": cover,
     }
 
 def fetch_bibliographic_metadata(isbn: str) -> dict:
     """Try LoC → OpenLibrary → Google Books. Always returns a dict."""
     for fetcher in [fetch_loc_metadata, fetch_openlibrary_metadata, fetch_google_books_metadata]:
         try:
-            return fetcher(isbn)
+            result = fetcher(isbn)
+            # If metadata found but no image, try the cover helper
+            if not result.get("Image_URL"):
+                result["Image_URL"] = fetch_cover_image_url(isbn)
+            return result
         except Exception:
             continue
     return {
         "ISBN": isbn, "Title": "Unknown", "Author": None,
         "Publisher": None, "Edition": None, "Date": None,
         "Dewey": None, "LCCN": None, "CatalogNumber": None,
-        "Pages": None, "Source": "Not Found",
+        "Pages": None, "Source": "Not Found", "Image_URL": None,
     }
 
 
@@ -144,7 +197,7 @@ def ai_enrich(title: str, author: str, publisher: str) -> dict:
 def enrich_metadata(isbn: str) -> dict:
     """
     Full enrichment pipeline for a single ISBN:
-    1. Fetch bibliographic metadata from external sources
+    1. Fetch bibliographic metadata + cover image from external sources
     2. Call Claude to generate summary, audience, category, tags
     Returns a single flat dict ready for upsert into WESLEY_LIBRARY.
     """
@@ -163,6 +216,7 @@ def enrich_metadata(isbn: str) -> dict:
         "CatalogNumber": meta.get("CatalogNumber"),
         "Pages":         meta.get("Pages"),
         "Source":        meta.get("Source"),
+        "Image_URL":     meta.get("Image_URL"),
         "Summary":       ai.get("summary"),
         "Audience":      ai.get("audience"),
         "Category":      ai.get("category"),

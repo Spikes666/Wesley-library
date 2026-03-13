@@ -18,7 +18,7 @@ def fetch_books(search: str = "", limit: int = 500, offset: int = 0) -> list[dic
             cursor.execute("""
                 SELECT ISBN, Title, Author, Publisher, Edition, Date,
                        Dewey, LCCN, CatalogNumber, Pages, Source,
-                       Checked_Out_By, Summary, Audience, Category, Tags
+                       Checked_Out_By, Summary, Audience, Category, Tags, Image_URL
                 FROM WESLEY_LIBRARY
                 WHERE UPPER(Title) LIKE %s
                    OR UPPER(Author) LIKE %s
@@ -32,7 +32,7 @@ def fetch_books(search: str = "", limit: int = 500, offset: int = 0) -> list[dic
             cursor.execute("""
                 SELECT ISBN, Title, Author, Publisher, Edition, Date,
                        Dewey, LCCN, CatalogNumber, Pages, Source,
-                       Checked_Out_By, Summary, Audience, Category, Tags
+                       Checked_Out_By, Summary, Audience, Category, Tags, Image_URL
                 FROM WESLEY_LIBRARY
                 ORDER BY Title
                 LIMIT %s OFFSET %s
@@ -52,7 +52,7 @@ def fetch_book_by_isbn(isbn: str) -> dict | None:
         cursor.execute("""
             SELECT ISBN, Title, Author, Publisher, Edition, Date,
                    Dewey, LCCN, CatalogNumber, Pages, Source,
-                   Checked_Out_By, Summary, Audience, Category, Tags
+                   Checked_Out_By, Summary, Audience, Category, Tags, Image_URL
             FROM WESLEY_LIBRARY WHERE ISBN = %s
         """, (isbn,))
         row = cursor.fetchone()
@@ -103,15 +103,16 @@ def upsert_books(books: list[dict], source: str = "system") -> int:
                     Summary       = %(Summary)s,
                     Audience      = %(Audience)s,
                     Category      = %(Category)s,
-                    Tags          = %(Tags)s
+                    Tags          = %(Tags)s,
+                    Image_URL     = %(Image_URL)s
                 WHEN NOT MATCHED THEN INSERT (
                     ISBN, Title, Author, Publisher, Edition, Date,
                     Dewey, LCCN, CatalogNumber, Pages, Source,
-                    Summary, Audience, Category, Tags
+                    Summary, Audience, Category, Tags, Image_URL
                 ) VALUES (
                     %(ISBN)s, %(Title)s, %(Author)s, %(Publisher)s, %(Edition)s,
                     %(Date)s, %(Dewey)s, %(LCCN)s, %(CatalogNumber)s, %(Pages)s, %(Source)s,
-                    %(Summary)s, %(Audience)s, %(Category)s, %(Tags)s
+                    %(Summary)s, %(Audience)s, %(Category)s, %(Tags)s, %(Image_URL)s
                 )
             """, {
                 "ISBN":          isbn,
@@ -129,6 +130,7 @@ def upsert_books(books: list[dict], source: str = "system") -> int:
                 "Audience":      book.get("Audience"),
                 "Category":      book.get("Category"),
                 "Tags":          book.get("Tags"),
+                "Image_URL":     book.get("Image_URL"),
             })
 
             # Write audit entry
