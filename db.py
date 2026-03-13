@@ -65,12 +65,26 @@ def fetch_book_by_isbn(isbn: str) -> dict | None:
         conn.close()
 
 
-def upsert_books(books: list[dict]) -> int:
-    """Insert or update books including AI enrichment fields. Returns count processed."""
+def upsert_books(books: list[dict], source: str = "system") -> int:
+    """
+    Insert or update books including AI enrichment fields.
+    Writes an audit log entry for each book (book_added or book_updated).
+    source: label for AUDIT_LOG_WESLEY.PERFORMED_BY
+            e.g. 'csv_upload', 'isbn_lookup', 'system'
+    Returns count processed.
+    """
     conn = get_connection()
     cursor = conn.cursor()
     try:
         for book in books:
+            isbn  = book.get("ISBN")
+            title = book.get("Title")
+
+            # Detect add vs update before merging
+            cursor.execute("SELECT 1 FROM WESLEY_LIBRARY WHERE ISBN = %s", (isbn,))
+            is_update = cursor.fetchone() is not None
+            action = "book_updated" if is_update else "book_added"
+
             cursor.execute("""
                 MERGE INTO WESLEY_LIBRARY AS target
                 USING (SELECT %(ISBN)s AS ISBN) AS source
@@ -100,8 +114,8 @@ def upsert_books(books: list[dict]) -> int:
                     %(Summary)s, %(Audience)s, %(Category)s, %(Tags)s
                 )
             """, {
-                "ISBN":          book.get("ISBN"),
-                "Title":         book.get("Title"),
+                "ISBN":          isbn,
+                "Title":         title,
                 "Author":        book.get("Author"),
                 "Publisher":     book.get("Publisher"),
                 "Edition":       book.get("Edition"),
@@ -116,6 +130,19 @@ def upsert_books(books: list[dict]) -> int:
                 "Category":      book.get("Category"),
                 "Tags":          book.get("Tags"),
             })
+
+            # Write audit entry
+            cursor.execute("""
+                INSERT INTO AUDIT_LOG_WESLEY (ACTION, ISBN, TITLE, PERFORMED_BY, NOTES)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                action,
+                isbn,
+                title,
+                source,
+                f"{'Updated' if is_update else 'Added'} via {source}"
+            ))
+
         conn.commit()
         return len(books)
     finally:
@@ -185,6 +212,26 @@ def fetch_circulation_log(limit: int = 100) -> list[dict]:
             FROM CHECKOUTS_WESLEY c
             LEFT JOIN WESLEY_LIBRARY w ON c.ISBN = w.ISBN
             ORDER BY c.CHECKED_OUT_AT DESC
+            LIMIT %s
+        """, (limit,))
+        columns = [col[0].lower() for col in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────────
+
+def fetch_audit_log(limit: int = 200) -> list[dict]:
+    """Fetch recent audit log entries — book adds, updates, deletes."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ID, ACTION, ISBN, TITLE, PERFORMED_BY, PERFORMED_AT, NOTES
+            FROM AUDIT_LOG_WESLEY
+            ORDER BY PERFORMED_AT DESC
             LIMIT %s
         """, (limit,))
         columns = [col[0].lower() for col in cursor.description]

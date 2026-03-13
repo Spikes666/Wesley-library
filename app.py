@@ -122,7 +122,7 @@ def isbn_save():
         return jsonify({"error": "Missing isbn"}), 400
     try:
         metadata = enrich_metadata(isbn)
-        count = upsert_books([metadata])
+        count = upsert_books([metadata], source="isbn_lookup")
         return jsonify({"success": True, "book": metadata, "saved": count})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -148,7 +148,7 @@ def upload_csv():
 
         isbns = df[isbn_col].dropna().str.strip().tolist()
         enriched = [enrich_metadata(isbn) for isbn in isbns if isbn]
-        saved = upsert_books([b for b in enriched if b])
+        saved = upsert_books([b for b in enriched if b], source="csv_upload")
 
         errors = [b["ISBN"] for b in enriched if b.get("Source") == "Not Found"]
         return jsonify({
@@ -196,6 +196,16 @@ def circulation():
         cursor.close()
         conn.close()
         return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+    
+@app.route("/api/admin/audit-log", methods=["GET"])
+def get_audit_log():
+    try:
+        limit = int(request.args.get("limit", 200))
+        from db import fetch_audit_log
+        return jsonify(fetch_audit_log(limit))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -34,5 +34,13 @@ LIMIT 10;
 
 
 
--- '3/4/2026'
-
+-- '3/12/2026'
+CREATE TABLE IF NOT EXISTS AUDIT_LOG_WESLEY (
+    ID              NUMBER AUTOINCREMENT PRIMARY KEY,
+    ACTION          VARCHAR(50),   -- 'book_added', 'book_updated', 'book_deleted'
+    ISBN            VARCHAR(20),
+    TITLE           VARCHAR(500),
+    PERFORMED_BY    VARCHAR(200),  -- will be 'system' for now, ready for user auth later
+    PERFORMED_AT    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    NOTES           VARCHAR(1000)
+);
