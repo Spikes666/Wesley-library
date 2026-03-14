@@ -942,7 +942,7 @@ export default function App() {
         <header className="header">
           <div className="header-brand">
             <img
-              src="/WMUMC-Logo.png"
+              src="/static/WMUMC-Logo.png"
               alt="Wesley Monumental UMC"
               className="brand-logo"
             />
