@@ -170,34 +170,6 @@ def admin_circulation():
         return jsonify(fetch_circulation_log(limit))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/circulation", methods=["GET"])
-def circulation():
-    limit = request.args.get("limit", 200)
-    try:
-        conn = get_snowflake_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT 
-                c.ISBN,
-                c.ACTION,
-                c.CHECKED_OUT_BY,
-                c.CHECKED_OUT_AT,
-                c.NOTES,
-                b.TITLE
-            FROM CHECKOUTS_WESLEY c
-            LEFT JOIN WESLEY_LIBRARY b ON c.ISBN = b.ISBN
-            ORDER BY c.CHECKED_OUT_AT DESC
-            LIMIT {limit}
-        """)
-        columns = [col[0].lower() for col in cursor.description]
-        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        cursor.close()
-        conn.close()
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
     
     
 @app.route("/api/admin/audit-log", methods=["GET"])
