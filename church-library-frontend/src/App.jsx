@@ -723,13 +723,10 @@ export default function App() {
         body{background:var(--cream);color:var(--ink);font-family:'Lato',Helvetica,Arial,sans-serif;font-size:15px;line-height:2em;}
         .app-shell{min-height:100vh;display:flex;flex-direction:column;}
 
-        /* ── Top Bar (WMUMC red) ── */
-        .top-bar{background:var(--accent);height:4px;flex-shrink:0;}
-
         /* ── Header ── */
         .header{background:var(--warm-white);color:var(--ink);padding:0 2.5rem;display:flex;align-items:center;justify-content:space-between;height:80px;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.08);border-bottom:1px solid var(--border);}
         .header-brand{display:flex;align-items:center;gap:1rem;}
-        .brand-logo{height:52px;width:auto;flex-shrink:0;}
+        .brand-logo{height:48px;width:auto;object-fit:contain;flex-shrink:0;}
         .brand-divider{width:1px;height:40px;background:var(--border);margin:0 .25rem;}
         .brand-text{display:flex;flex-direction:column;}
         .brand-title{font-family:'Arvo',Georgia,serif;font-size:1.15rem;font-weight:700;color:var(--ink);line-height:1.25;}
@@ -942,31 +939,13 @@ export default function App() {
       `}</style>
 
       <div className="app-shell">
-        {/* ── WMUMC Red Top Bar ── */}
-        <div className="top-bar" />
-
         <header className="header">
           <div className="header-brand">
-            {/* Inline SVG — WMUMC Gothic spire silhouette */}
-            <svg className="brand-logo" viewBox="0 0 60 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Wesley Monumental UMC">
-              {/* Cross atop spire */}
-              <rect x="28.5" y="0" width="3" height="10" rx="1" fill="#b42025"/>
-              <rect x="25" y="3" width="10" height="3" rx="1" fill="#b42025"/>
-              {/* Gothic spire */}
-              <path d="M30 10 L22 28 L22 54 L18 54 L18 28 L14 28 L14 54 L10 54 L10 32 L30 10 Z" fill="#b42025"/>
-              <path d="M30 10 L38 28 L38 54 L42 54 L42 28 L46 28 L46 54 L50 54 L50 32 L30 10 Z" fill="#b42025"/>
-              {/* Center nave */}
-              <rect x="22" y="28" width="16" height="26" fill="#b42025"/>
-              {/* Gothic arch window */}
-              <path d="M26 36 Q30 30 34 36 L34 46 L26 46 Z" fill="#ffffff"/>
-              {/* Foundation base */}
-              <rect x="8" y="54" width="44" height="4" rx="1" fill="#b42025"/>
-              {/* Base step */}
-              <rect x="5" y="58" width="50" height="4" rx="1.5" fill="#75ad99"/>
-              {/* Side tower caps */}
-              <polygon points="14,28 18,28 16,22" fill="#b42025"/>
-              <polygon points="42,28 46,28 44,22" fill="#b42025"/>
-            </svg>
+            <img
+              src="/WMUMC-Logo.png"
+              alt="Wesley Monumental UMC"
+              className="brand-logo"
+            />
             <div className="brand-divider" />
             <div className="brand-text">
               <div className="brand-title">Wesley Monumental UMC</div>
