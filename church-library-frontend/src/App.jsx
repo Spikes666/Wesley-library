@@ -936,6 +936,82 @@ export default function App() {
         .pulse-dot:nth-child(2){animation-delay:.2s}.pulse-dot:nth-child(3){animation-delay:.4s}
         @keyframes pulse{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
         .hidden{display:none!important;}
+
+        /* ── Responsive: Tablet (≤ 980px) ── */
+        @media (max-width:980px) {
+          .header{padding:0 1.5rem;height:auto;min-height:70px;flex-wrap:wrap;gap:.75rem;padding-top:.75rem;padding-bottom:.75rem;}
+          .header-brand{gap:.75rem;}
+          .brand-logo{height:38px;}
+          .brand-title{font-size:1rem;}
+          .header-actions{flex-wrap:wrap;gap:.5rem;justify-content:flex-end;}
+          .stats-bar{padding:.75rem 1.5rem;gap:1.5rem;flex-wrap:wrap;}
+          .toolbar{padding:.75rem 1.5rem;gap:.5rem;}
+          .search-wrap{min-width:180px;max-width:100%;flex-basis:100%;}
+          .content{padding:1.25rem 1.5rem;}
+          .drawer{--drawer-w:380px;}
+        }
+
+        /* ── Responsive: Mobile (≤ 640px) ── */
+        @media (max-width:640px) {
+          .header{padding:.75rem 1rem;flex-direction:column;align-items:stretch;gap:.6rem;}
+          .header-brand{justify-content:center;}
+          .brand-logo{height:34px;}
+          .brand-divider{height:30px;}
+          .brand-title{font-size:.95rem;}
+          .brand-sub{font-size:.6rem;}
+          .header-actions{justify-content:center;gap:.4rem;flex-wrap:wrap;}
+          .header-actions .btn,.header-actions .btn-circ{font-size:.75rem;padding:.45rem .7rem;}
+          .stats-bar{padding:.6rem 1rem;gap:1rem;justify-content:center;}
+          .stat-num{font-size:1.2rem;}
+          .stat-label{font-size:.65rem;}
+          .toolbar{padding:.6rem 1rem;flex-direction:column;align-items:stretch;gap:.5rem;}
+          .search-wrap{max-width:100%;min-width:0;}
+          .filter-group{width:100%;display:flex;}
+          .filter-btn{flex:1;text-align:center;padding:.45rem .5rem;font-size:.75rem;}
+          .filter-select{width:100%;}
+          .content{padding:.75rem .75rem;}
+
+          /* Table → Card layout on mobile */
+          .table-scroll{overflow-x:visible;}
+          table,thead,tbody,th,td,tr{display:block;}
+          thead tr{position:absolute;top:-9999px;left:-9999px;}
+          .book-row{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.6rem;padding:.75rem;background:var(--warm-white);display:flex;flex-direction:column;gap:.4rem;}
+          .book-row:hover{background:var(--parchment);}
+          td{padding:0;border:none;}
+          .td-title{max-width:100%;min-width:0;}
+          .td-author::before{content:"Author: ";font-size:.7rem;color:var(--ink-light);text-transform:uppercase;letter-spacing:.05em;}
+          .td-year::before{content:"Year: ";font-size:.7rem;color:var(--ink-light);text-transform:uppercase;letter-spacing:.05em;}
+          .td-dewey::before{content:"Dewey: ";font-size:.7rem;color:var(--ink-light);text-transform:uppercase;letter-spacing:.05em;}
+          .td-status{margin-top:.25rem;}
+          .td-actions{text-align:left;padding-right:0;margin-top:.35rem;}
+          .action-btn{width:100%;justify-content:center;padding:.5rem;}
+          .table-footer{flex-direction:column;text-align:center;gap:.25rem;padding:.6rem 1rem;}
+          .expand-row td{padding:.5rem 0;}
+
+          /* Modals */
+          .modal-card,.modal-card-lg{width:95%;max-width:95%;}
+          .modal-header{padding:1rem;}
+          .modal-body{padding:1rem;}
+          .modal-footer{padding:.75rem 1rem;}
+          .isbn-search-row{flex-direction:column;}
+
+          /* Drawer full-width on mobile */
+          .drawer{--drawer-w:100vw;}
+          .stat-cards{grid-template-columns:1fr 1fr;gap:.5rem;}
+          .stat-card{padding:.65rem .75rem;}
+          .stat-card-num{font-size:1.4rem;}
+
+          /* Toasts */
+          .toast{min-width:0;max-width:calc(100vw - 2rem);font-size:.82rem;}
+        }
+
+        /* ── Responsive: Small phones (≤ 380px) ── */
+        @media (max-width:380px) {
+          .header-actions .btn,.header-actions .btn-circ{font-size:.7rem;padding:.4rem .55rem;gap:.25rem;}
+          .brand-logo{height:28px;}
+          .brand-title{font-size:.85rem;}
+          .stat-cards{grid-template-columns:1fr;}
+        }
       `}</style>
 
       <div className="app-shell">
