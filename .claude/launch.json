@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "church-library-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "church-library-frontend"],
+      "port": 5173,
+      "url": "http://localhost:5173"
+    }
+  ]
+}
