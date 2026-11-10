@@ -18,6 +18,7 @@ const ChevronIcon   = ({ open }) => (<svg width="14" height="14" viewBox="0 0 24
 const ClipboardIcon = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>);
 const PlusIcon      = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
 const WarnIcon      = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>);
+const GearIcon      = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>);
 const DownloadIcon  = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>);
 const SparkleIcon   = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>);
 
@@ -561,7 +562,7 @@ function ISBNLookupModal({ onClose, onSuccess, addToast, existingBooks }) {
     if (val.length < 10) { addToast("Enter a valid 10 or 13-digit ISBN.", "warn"); return; }
     setLooking(true); setPreview(null); setDuplicate(null);
     try {
-      const res = await axios.get(`/api/books/lookup?isbn=${val}`, { withCredentials: true });
+      const res = await axios.get(`/api/admin/isbn-lookup?isbn=${val}`, { withCredentials: true });
       setPreview(res.data);
       const match = existingBooks.find(b => normalizeISBN(b.isbn) === normalizeISBN(val));
       if (match) setDuplicate(match);
@@ -573,7 +574,7 @@ function ISBNLookupModal({ onClose, onSuccess, addToast, existingBooks }) {
     if (!preview) return;
     setSaving(true);
     try {
-      await axios.post("/api/books/add", preview, { withCredentials: true });
+      await axios.post("/api/admin/isbn-save", preview, { withCredentials: true });
       addToast(`"${preview.Title || preview.ISBN}" added to the library.`, "success");
       onSuccess(); onClose();
     } catch (err) { addToast(err.response?.data?.error || "Failed to save.", "error"); }
@@ -744,11 +745,115 @@ function UploadPanel({ onSuccess, addToast, onClose, existingBooks }) {
   );
 }
 
+// ── Admin Drawer ──────────────────────────────────────────────────────────────
+function AdminDrawer({ open, onClose, books, onAddBook, onUpload }) {
+  const [tab, setTab]         = useState("actions");
+  const [auditLog, setAuditLog] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { if (open && tab === "audit") loadAudit(); }, [open, tab]);
+
+  const loadAudit = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get("/api/admin/audit-log", { withCredentials: true });
+      setAuditLog(Array.isArray(res.data) ? res.data : []);
+    } catch { setAuditLog([]); }
+    finally { setLoading(false); }
+  };
+
+  const TABS = [
+    { id: "actions", label: "Actions" },
+    { id: "audit",   label: "Audit Log" },
+  ];
+
+  return (
+    <>
+      <div className={`drawer-backdrop ${open ? "drawer-backdrop-open" : ""}`} onClick={onClose} />
+      <div className={`drawer drawer-left ${open ? "drawer-open" : ""}`}>
+        <div className="drawer-header">
+          <div className="drawer-title"><GearIcon /><span>Admin</span></div>
+          <button className="icon-btn-light" onClick={onClose}><CloseIcon /></button>
+        </div>
+        <div className="drawer-tabs">
+          {TABS.map(t => (
+            <button key={t.id} className={`drawer-tab ${tab === t.id ? "drawer-tab-active" : ""}`}
+              onClick={() => { setTab(t.id); if (t.id === "audit") loadAudit(); }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="drawer-body">
+          {tab === "actions" ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:".75rem" }}>
+              <p className="section-label">Catalog Management</p>
+              <button className="admin-action-btn" onClick={() => { onClose(); onAddBook(); }}>
+                <PlusIcon />
+                <div>
+                  <div className="admin-action-title">Add Book by ISBN</div>
+                  <div className="admin-action-sub">Look up and add a single book using its ISBN</div>
+                </div>
+              </button>
+              <button className="admin-action-btn" onClick={() => { onClose(); onUpload(); }}>
+                <UploadIcon />
+                <div>
+                  <div className="admin-action-title">Upload CSV</div>
+                  <div className="admin-action-sub">Bulk-import a spreadsheet of ISBNs with AI enrichment</div>
+                </div>
+              </button>
+              <button className="admin-action-btn" onClick={() => exportToCSV(books)} disabled={books.length === 0}>
+                <DownloadIcon />
+                <div>
+                  <div className="admin-action-title">Export Catalog</div>
+                  <div className="admin-action-sub">Download the full library as CSV ({books.length} books)</div>
+                </div>
+              </button>
+            </div>
+          ) : tab === "audit" ? (
+            loading ? (
+              <div className="drawer-loading"><div className="loading-pulse"><div className="pulse-dot"/><div className="pulse-dot"/><div className="pulse-dot"/></div></div>
+            ) : auditLog.length === 0 ? (
+              <div className="drawer-empty">No audit history yet.</div>
+            ) : (
+              <div className="circ-list">
+                {auditLog.map((entry, i) => (
+                  <div key={i} className="circ-entry">
+                    <div className={`circ-dot ${entry.action === "book_added" ? "dot-in" : "dot-out"}`} />
+                    <div className="circ-info">
+                      <span className="circ-title">{entry.title || entry.isbn || "Unknown"}</span>
+                      <span className="circ-meta">
+                        <span className={`circ-action ${entry.action === "book_added" ? "action-ci" : "action-co"}`}>
+                          {entry.action === "book_added" ? "Added" : "Updated"}
+                        </span>
+                        {entry.performed_by && <> · <strong>{entry.performed_by}</strong></>}
+                      </span>
+                      <span className="circ-date">{formatDate(entry.performed_at)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Book Row ──────────────────────────────────────────────────────────────────
 function BookRow({ book, onCheckout, onReturn, index }) {
   const [expanded, setExpanded] = useState(false);
   const isOut = !!book.checked_out_by;
   const tags = book.tags ? book.tags.split(",").map(t=>t.trim()).filter(Boolean) : [];
+  const metaFields = [
+    book.isbn        && ["ISBN",      book.isbn],
+    book.publisher   && ["Publisher", book.publisher],
+    book.edition     && ["Edition",   book.edition],
+    book.pages       && ["Pages",     book.pages],
+    book.lccn        && ["LCCN",      book.lccn],
+    book.source      && ["Source",    book.source],
+    book.date        && ["Date",      book.date],
+  ].filter(Boolean);
 
   return (
     <>
@@ -759,11 +864,9 @@ function BookRow({ book, onCheckout, onReturn, index }) {
             <div style={{flex:1,minWidth:0}}>
               <div className="title-top">
                 <span className="title-text">{book.title || "—"}</span>
-                {(book.summary || tags.length > 0) && (
-                  <button className="expand-btn" onClick={()=>setExpanded(v=>!v)} title="Show summary & tags">
-                    <ChevronIcon open={expanded} />
-                  </button>
-                )}
+                <button className="expand-btn" onClick={()=>setExpanded(v=>!v)} title="Show details">
+                  <ChevronIcon open={expanded} />
+                </button>
               </div>
               <div className="title-meta">
                 {book.category && <span className="cat-badge">{book.category}</span>}
@@ -794,6 +897,16 @@ function BookRow({ book, onCheckout, onReturn, index }) {
             <div className="expand-body">
               {book.summary && <p className="expand-summary">{book.summary}</p>}
               {tags.length > 0 && <div className="tag-list">{tags.map(tag=><span key={tag} className="tag-chip">{tag}</span>)}</div>}
+              {metaFields.length > 0 && (
+                <div className="expand-meta-grid">
+                  {metaFields.map(([label, value]) => (
+                    <React.Fragment key={label}>
+                      <span className="expand-meta-label">{label}</span>
+                      <span className="expand-meta-value">{value}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
           </td>
         </tr>
@@ -819,6 +932,7 @@ export default function App() {
   const [showCirc, setShowCirc]             = useState(false);
   const [toasts, setToasts]                 = useState([]);
   const [hasFetched, setHasFetched]         = useState(false);
+  const [showAdmin, setShowAdmin]           = useState(false);
 
   const addToast = (message, type="info") => {
     const id = Date.now() + Math.random();
@@ -1583,6 +1697,37 @@ export default function App() {
         @keyframes pulse { 0%,80%,100% { transform:scale(.6); opacity:.4 } 40% { transform:scale(1); opacity:1 } }
         .hidden { display: none !important; }
 
+        /* ── Admin Drawer (left side) ── */
+        .drawer-left {
+          left: 0; right: auto;
+          transform: translateX(-100%);
+        }
+        .drawer-left.drawer-open { transform: translateX(0); }
+
+        .admin-action-btn {
+          display: flex; align-items: flex-start; gap: .9rem;
+          padding: .9rem 1rem;
+          background: var(--surface-2);
+          border: 1.5px solid var(--border);
+          border-radius: var(--radius);
+          cursor: pointer; text-align: left; width: 100%;
+          transition: all .15s;
+          color: var(--text); font-family: 'Inter', sans-serif;
+        }
+        .admin-action-btn:hover { border-color: var(--green-mid); background: var(--green-bg); }
+        .admin-action-btn:disabled { opacity: .4; cursor: not-allowed; }
+        .admin-action-btn svg { flex-shrink: 0; color: var(--green); margin-top: .15rem; }
+        .admin-action-title { font-weight: 600; font-size: .9rem; margin-bottom: .15rem; }
+        .admin-action-sub { font-size: .76rem; color: var(--text-muted); line-height: 1.4; }
+
+        /* ── Book detail expand ── */
+        .expand-meta-grid {
+          display: grid; grid-template-columns: auto 1fr;
+          gap: .2rem .75rem; font-size: .8rem;
+        }
+        .expand-meta-label { color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+        .expand-meta-value { color: var(--text-mid); font-family: monospace; font-size: .78rem; }
+
         /* ── Responsive: Tablet ── */
         @media (max-width: 980px) {
           .header { padding: 0 1.25rem; height: auto; min-height: 62px; flex-wrap: wrap; gap: .65rem; padding-top: .65rem; padding-bottom: .65rem; }
@@ -1652,10 +1797,8 @@ export default function App() {
           </div>
           <div className="header-actions">
             <button className="btn-circ" onClick={()=>setShowCirc(true)}><ClipboardIcon /> Circulation</button>
-            <button className="btn btn-outline" onClick={()=>setShowLookup(true)}><PlusIcon /> Add Book</button>
-            <button className="btn btn-outline" onClick={()=>exportToCSV(books)} disabled={books.length===0}><DownloadIcon /> Export</button>
             <button className="btn btn-outline" onClick={loadBooks} disabled={loading}><RefreshIcon /></button>
-            <button className="btn btn-primary" onClick={()=>setShowUpload(true)}><UploadIcon /> Upload CSV</button>
+            <button className="btn btn-primary" onClick={()=>setShowAdmin(true)}><GearIcon /> Admin</button>
           </div>
         </header>
 
@@ -1751,6 +1894,7 @@ export default function App() {
         </main>
       </div>
 
+      <AdminDrawer open={showAdmin} onClose={()=>setShowAdmin(false)} books={books} onAddBook={()=>setShowLookup(true)} onUpload={()=>setShowUpload(true)} />
       <CirculationDrawer open={showCirc} onClose={()=>setShowCirc(false)} books={books} />
       {showLookup   && <ISBNLookupModal onSuccess={loadBooks} addToast={addToast} onClose={()=>setShowLookup(false)} existingBooks={books}/>}
       {checkoutBook && <CheckoutModal book={checkoutBook} onClose={()=>setCheckoutBook(null)} onSuccess={loadBooks} addToast={addToast}/>}

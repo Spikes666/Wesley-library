@@ -161,10 +161,47 @@ def fetch_bibliographic_metadata(isbn: str) -> dict:
     }
 
 
+# ── Reddit context ────────────────────────────────────────────────────────────
+
+CHURCH_SUBS = {"books", "Christianity", "Reformed", "theology", "Catholicism",
+               "DebateReligion", "Christian", "biblestudy", "Methodism", "UnitedMethodist"}
+
+def fetch_reddit_context(title: str, author: str = "") -> str:
+    """
+    Pull top Reddit discussion snippets for the book to give the AI richer context.
+    Uses the public JSON API — no auth required.
+    Returns a short string (empty if nothing found or on error).
+    """
+    try:
+        last_name = author.split(",")[0].strip() if author else ""
+        query = f'"{title}"' + (f" {last_name}" if last_name else "")
+        url = (
+            "https://www.reddit.com/search.json"
+            f"?q={requests.utils.quote(query)}&sort=relevance&limit=5&t=all"
+        )
+        resp = requests.get(url, headers={"User-Agent": "WesleyLibrary/1.0"}, timeout=8)
+        posts = resp.json().get("data", {}).get("children", [])
+        snippets = []
+        for p in posts:
+            d = p.get("data", {})
+            sub = d.get("subreddit", "")
+            if sub not in CHURCH_SUBS:
+                continue
+            heading = d.get("title", "")
+            body = (d.get("selftext", "") or "")[:180].replace("\n", " ").strip()
+            snippets.append(f"r/{sub}: {heading}. {body}".rstrip(". "))
+            if len(snippets) >= 2:
+                break
+        return " | ".join(snippets)
+    except Exception:
+        return ""
+
+
 # ── AI enrichment ─────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are a church librarian and bibliographer.
-Given a book's title, author, and publisher, return a JSON object with exactly these four fields:
+Given a book's title, author, publisher, and optional community discussion context,
+return a JSON object with exactly these four fields:
 - summary: 1-2 sentence description of what the book is about (be specific, not generic)
 - audience: exactly one of: Academic, Reference, General, Children, Devotional
 - category: exactly one of: Theology, Biblical Studies, Church History, Biography, Devotional, Christian Living, Ministry, Philosophy, Fiction, Reference, History, Other
@@ -175,11 +212,15 @@ Respond with only valid JSON. No markdown, no explanation."""
 def ai_enrich(title: str, author: str, publisher: str) -> dict:
     """Call Claude Haiku to generate summary, audience, category, tags."""
     try:
+        reddit = fetch_reddit_context(title, author)
+        user_msg = f"Title: {title or 'Unknown'}\nAuthor: {author or 'Unknown'}\nPublisher: {publisher or 'Unknown'}"
+        if reddit:
+            user_msg += f"\n\nCommunity context: {reddit}"
         response = _get_client().messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"Title: {title or 'Unknown'}\nAuthor: {author or 'Unknown'}\nPublisher: {publisher or 'Unknown'}"}]
+            messages=[{"role": "user", "content": user_msg}]
         )
         text = response.content[0].text.strip()
         if text.startswith("```"):
