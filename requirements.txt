@@ -10,3 +10,4 @@ mypy
 snowflake-connector-python>=3.16.0
 pandas
 cryptography
+anthropic

@@ -25,6 +25,7 @@ def fetch_books(search: str = "", limit: int = 500, offset: int = 0) -> list[dic
                    OR ISBN LIKE %s
                    OR UPPER(Tags) LIKE %s
                    OR UPPER(Category) LIKE %s
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY ISBN ORDER BY Title) = 1
                 ORDER BY Title
                 LIMIT %s OFFSET %s
             """, (like, like, like, like, like, limit, offset))
@@ -34,6 +35,7 @@ def fetch_books(search: str = "", limit: int = 500, offset: int = 0) -> list[dic
                        Dewey, LCCN, CatalogNumber, Pages, Source,
                        Checked_Out_By, Summary, Audience, Category, Tags, Image_URL
                 FROM WESLEY_LIBRARY
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY ISBN ORDER BY Title) = 1
                 ORDER BY Title
                 LIMIT %s OFFSET %s
             """, (limit, offset))

@@ -19,7 +19,22 @@ _anthropic_client = None
 def _get_client():
     global _anthropic_client
     if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        try:
+            from anthropic import DefaultHttpxClient
+            import httpx2
+            # Use a transport that sends Accept-Encoding: gzip only,
+            # avoiding brotli which has a decompressor incompatibility in this env.
+            transport = httpx2.HTTPTransport()
+            http_client = DefaultHttpxClient(
+                transport=transport,
+                headers={"Accept-Encoding": "gzip, deflate"},
+            )
+            _anthropic_client = anthropic.Anthropic(
+                api_key=os.environ["ANTHROPIC_API_KEY"],
+                http_client=http_client,
+            )
+        except Exception:
+            _anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     return _anthropic_client
 
 
@@ -140,7 +155,31 @@ def fetch_google_books_metadata(isbn):
         "Pages": str(volume.get("pageCount")) if volume.get("pageCount") else None,
         "Source": "Google Books",
         "Image_URL": cover,
+        # Extra context for AI enrichment (not persisted as a column)
+        "_description": (volume.get("description") or "")[:600],
+        "_subjects": volume.get("categories", []),
+        "_subtitle": volume.get("subtitle", ""),
     }
+
+
+def fetch_google_books_context(isbn: str) -> tuple[str, list[str], str]:
+    """
+    Lightweight Google Books fetch just for AI context (description, subjects, subtitle).
+    Returns (description, categories, subtitle). Never raises.
+    """
+    try:
+        url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+        resp = requests.get(url, headers={"User-Agent": "WesleyLibrary/1.0"}, timeout=10)
+        items = resp.json().get("items", [])
+        if not items:
+            return "", [], ""
+        vi = items[0]["volumeInfo"]
+        desc     = (vi.get("description") or "")[:600]
+        subjects = vi.get("categories", [])
+        subtitle = vi.get("subtitle", "")
+        return desc, subjects, subtitle
+    except Exception:
+        return "", [], ""
 
 def fetch_bibliographic_metadata(isbn: str) -> dict:
     """Try LoC → OpenLibrary → Google Books. Always returns a dict."""
@@ -161,31 +200,101 @@ def fetch_bibliographic_metadata(isbn: str) -> dict:
     }
 
 
+# ── Reddit context ────────────────────────────────────────────────────────────
+
+CHURCH_SUBS = {"books", "Christianity", "Reformed", "theology", "Catholicism",
+               "DebateReligion", "Christian", "biblestudy", "Methodism", "UnitedMethodist"}
+
+def fetch_reddit_context(title: str, author: str = "") -> str:
+    """
+    Pull top Reddit discussion snippets for the book to give the AI richer context.
+    Uses the public JSON API — no auth required.
+    Returns a short string (empty if nothing found or on error).
+    """
+    try:
+        last_name = author.split(",")[0].strip() if author else ""
+        query = f'"{title}"' + (f" {last_name}" if last_name else "")
+        url = (
+            "https://www.reddit.com/search.json"
+            f"?q={requests.utils.quote(query)}&sort=relevance&limit=5&t=all"
+        )
+        resp = requests.get(url, headers={"User-Agent": "WesleyLibrary/1.0"}, timeout=8)
+        posts = resp.json().get("data", {}).get("children", [])
+        snippets = []
+        for p in posts:
+            d = p.get("data", {})
+            sub = d.get("subreddit", "")
+            if sub not in CHURCH_SUBS:
+                continue
+            heading = d.get("title", "")
+            body = (d.get("selftext", "") or "")[:180].replace("\n", " ").strip()
+            snippets.append(f"r/{sub}: {heading}. {body}".rstrip(". "))
+            if len(snippets) >= 2:
+                break
+        return " | ".join(snippets)
+    except Exception:
+        return ""
+
+
 # ── AI enrichment ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are a church librarian and bibliographer.
-Given a book's title, author, and publisher, return a JSON object with exactly these four fields:
-- summary: 1-2 sentence description of what the book is about (be specific, not generic)
+SYSTEM_PROMPT = """You are a church librarian and expert theologian creating catalog metadata for a Methodist/Wesleyan church library.
+
+Given a book's title, author, publisher, and any additional context, return a JSON object with exactly these four fields:
+
+- summary: 2-3 sentence description that NAMES specific biblical figures (Jesus, Isaiah, Moses, Paul, John the Baptist, David, Abraham, etc.), theological concepts (salvation, grace, atonement, resurrection, sanctification, etc.), and historical movements. Be specific—not "explores faith" but "examines Paul's theology of justification by grace in Romans."
+
 - audience: exactly one of: Academic, Reference, General, Children, Devotional
-- category: exactly one of: Theology, Biblical Studies, Church History, Biography, Devotional, Christian Living, Ministry, Philosophy, Fiction, Reference, History, Other
-- tags: 3-6 comma-separated lowercase keywords relevant to the book
+
+- category: exactly one of: Theology, Biblical Studies, Old Testament, New Testament, Christology, Church History, Biography, Devotional, Christian Living, Ministry, Wesleyan/Methodist, Missions, Philosophy, Fiction, Reference, History, Other
+
+- tags: 10-15 comma-separated lowercase tags. MUST include relevant items from these pools:
+  * Biblical figures: jesus, paul, moses, isaiah, david, john the baptist, peter, mary, abraham, joseph, elijah, john, luke, matthew, mark
+  * Books of the Bible: genesis, psalms, isaiah, matthew, john, romans, revelation, acts, luke, corinthians, ephesians, hebrews, exodus, proverbs, job
+  * Theological themes: salvation, grace, atonement, resurrection, sanctification, justification, redemption, covenant, sin, faith, prayer, worship, discipleship, evangelism, eschatology, trinity, holy spirit, baptism, eucharist, forgiveness, prophecy, healing
+  * Church tradition: wesleyan, methodist, protestant, catholic, evangelical, reformed, pentecostal, early church, church fathers, reformation, puritans
+  * Academic/practical: systematic theology, biblical commentary, church history, pastoral care, preaching, missions, social justice, spiritual formation, apologetics, hermeneutics
+
+  Include ONLY tags genuinely relevant to this specific book. Do not pad with generic terms.
 
 Respond with only valid JSON. No markdown, no explanation."""
 
-def ai_enrich(title: str, author: str, publisher: str) -> dict:
-    """Call Claude Haiku to generate summary, audience, category, tags."""
+def ai_enrich(title: str, author: str, publisher: str,
+              description: str = "", subjects: list | None = None,
+              subtitle: str = "") -> dict:
+    """Call Claude Sonnet to generate summary, audience, category, tags with theological depth."""
     try:
+        reddit = fetch_reddit_context(title, author)
+        user_msg = f"Title: {title or 'Unknown'}"
+        if subtitle:
+            user_msg += f"\nSubtitle: {subtitle}"
+        user_msg += f"\nAuthor: {author or 'Unknown'}\nPublisher: {publisher or 'Unknown'}"
+        if description:
+            user_msg += f"\nDescription: {description[:500]}"
+        if subjects:
+            user_msg += f"\nSubjects: {', '.join(subjects[:8])}"
+        if reddit:
+            user_msg += f"\n\nCommunity discussion: {reddit}"
         response = _get_client().messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
+            model="claude-sonnet-5-5",
+            max_tokens=1500,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"Title: {title or 'Unknown'}\nAuthor: {author or 'Unknown'}\nPublisher: {publisher or 'Unknown'}"}]
+            messages=[{"role": "user", "content": user_msg}]
         )
-        text = response.content[0].text.strip()
+        text_block = next((b for b in response.content if b.type == "text"), None)
+        if text_block is None:
+            raise ValueError("No text block in response")
+        text = text_block.text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:]
+            text = text.rstrip("`").strip()
+        # Use raw_decode to parse exactly the first JSON object and ignore trailing text
+        brace = text.find("{")
+        if brace != -1:
+            obj, _ = json.JSONDecoder().raw_decode(text, brace)
+            return obj
         return json.loads(text.strip())
     except Exception as e:
         print(f"  ⚠️  AI enrichment failed for '{title}': {e}")
@@ -202,7 +311,11 @@ def enrich_metadata(isbn: str) -> dict:
     Returns a single flat dict ready for upsert into WESLEY_LIBRARY.
     """
     meta = fetch_bibliographic_metadata(isbn)
-    ai   = ai_enrich(meta.get("Title"), meta.get("Author"), meta.get("Publisher"))
+    desc, subjects, subtitle = fetch_google_books_context(isbn)
+    ai   = ai_enrich(
+        meta.get("Title"), meta.get("Author"), meta.get("Publisher"),
+        description=desc, subjects=subjects, subtitle=subtitle,
+    )
 
     return {
         "ISBN":          meta.get("ISBN"),
