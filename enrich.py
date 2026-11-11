@@ -277,7 +277,7 @@ def ai_enrich(title: str, author: str, publisher: str,
             user_msg += f"\n\nCommunity discussion: {reddit}"
         response = _get_client().messages.create(
             model="claude-sonnet-5-5",
-            max_tokens=600,
+            max_tokens=1500,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}]
         )
@@ -290,11 +290,11 @@ def ai_enrich(title: str, author: str, publisher: str,
             if text.startswith("json"):
                 text = text[4:]
             text = text.rstrip("`").strip()
-        # Extract just the first JSON object in case model added extra text
+        # Use raw_decode to parse exactly the first JSON object and ignore trailing text
         brace = text.find("{")
-        close = text.rfind("}")
-        if brace != -1 and close != -1:
-            text = text[brace:close + 1]
+        if brace != -1:
+            obj, _ = json.JSONDecoder().raw_decode(text, brace)
+            return obj
         return json.loads(text.strip())
     except Exception as e:
         print(f"  ⚠️  AI enrichment failed for '{title}': {e}")
