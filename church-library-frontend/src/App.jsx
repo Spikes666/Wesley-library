@@ -350,10 +350,7 @@ function CirculationDrawer({ open, onClose, books }) {
       <div className={`drawer ${open ? "drawer-open" : ""}`}>
         <div className="drawer-header">
           <div className="drawer-title"><ClipboardIcon /><span>Circulation</span></div>
-          <div style={{ display:"flex", gap:".4rem", alignItems:"center" }}>
-            <button className="icon-btn-light" onClick={loadLog} title="Refresh"><RefreshIcon /></button>
-            <button className="icon-btn-light" onClick={onClose}><CloseIcon /></button>
-          </div>
+          <button className="icon-btn-light" onClick={onClose}><CloseIcon /></button>
         </div>
         <div className="drawer-tabs">
           {TABS.map(t => (
@@ -479,7 +476,9 @@ function CirculationDrawer({ open, onClose, books }) {
 
 // ── Checkout Modal ────────────────────────────────────────────────────────────
 function CheckoutModal({ book, onClose, onSuccess, addToast }) {
-  const [user, setUser] = useState("");
+  const [user,    setUser]    = useState("");
+  const [email,   setEmail]   = useState("");
+  const [phone,   setPhone]   = useState("");
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -488,7 +487,12 @@ function CheckoutModal({ book, onClose, onSuccess, addToast }) {
     if (!user.trim()) { addToast("Please enter a borrower name.", "warn"); return; }
     setLoading(true);
     try {
-      await axios.post(`/api/checkout`, { isbn: book.isbn, user: user.trim() }, { withCredentials: true });
+      await axios.post(`/api/checkout`, {
+        isbn: book.isbn,
+        user: user.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+      }, { withCredentials: true });
       addToast(`"${book.title}" checked out to ${user.trim()}.`, "success");
       onSuccess(); onClose();
     } catch (err) { addToast(err.response?.data?.error || "Checkout failed.", "error"); }
@@ -501,9 +505,22 @@ function CheckoutModal({ book, onClose, onSuccess, addToast }) {
         <div className="modal-header"><h3>Check Out Book</h3><button className="icon-btn" onClick={onClose}><CloseIcon /></button></div>
         <div className="modal-body">
           <div className="book-chip"><BookIcon /><span>{book.title || "Unknown Title"}</span></div>
-          <label className="field-label">Borrower Name</label>
-          <input ref={inputRef} className="text-input" placeholder="Enter name…" value={user}
+          <label className="field-label">Borrower Name <span className="field-required">*</span></label>
+          <input ref={inputRef} className="text-input" placeholder="First and last name…" value={user}
             onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+          <div className="field-row">
+            <div className="field-col">
+              <label className="field-label">Email</label>
+              <input className="text-input" type="email" placeholder="email@example.com" value={email}
+                onChange={e => setEmail(e.target.value)} />
+            </div>
+            <div className="field-col">
+              <label className="field-label">Phone</label>
+              <input className="text-input" type="tel" placeholder="(555) 555-5555" value={phone}
+                onChange={e => setPhone(e.target.value)} />
+            </div>
+          </div>
+          <p className="field-hint">Contact info used only for overdue reminders.</p>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
@@ -746,12 +763,20 @@ function UploadPanel({ onSuccess, addToast, onClose, existingBooks }) {
 }
 
 // ── Admin Drawer ──────────────────────────────────────────────────────────────
-function AdminDrawer({ open, onClose, books, onAddBook, onUpload }) {
-  const [tab, setTab]         = useState("actions");
-  const [auditLog, setAuditLog] = useState([]);
-  const [loading, setLoading] = useState(false);
+function AdminDrawer({ open, onClose, books, onAddBook, onUpload, addToast }) {
+  const [tab,          setTab]       = useState("actions");
+  const [auditLog,     setAuditLog]  = useState([]);
+  const [overdue,      setOverdue]   = useState([]);
+  const [unmatched,    setUnmatched] = useState([]);
+  const [loading,      setLoading]   = useState(false);
+  const [alertSending, setAlertSending] = useState(false);
 
-  useEffect(() => { if (open && tab === "audit") loadAudit(); }, [open, tab]);
+  useEffect(() => {
+    if (!open) return;
+    if (tab === "audit")     loadAudit();
+    if (tab === "overdue")   loadOverdue();
+    if (tab === "unmatched") loadUnmatched();
+  }, [open, tab]);
 
   const loadAudit = async () => {
     setLoading(true);
@@ -762,10 +787,43 @@ function AdminDrawer({ open, onClose, books, onAddBook, onUpload }) {
     finally { setLoading(false); }
   };
 
+  const loadOverdue = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get("/api/admin/overdue", { withCredentials: true });
+      setOverdue(Array.isArray(res.data) ? res.data : []);
+    } catch { setOverdue([]); }
+    finally { setLoading(false); }
+  };
+
+  const loadUnmatched = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get("/api/admin/unmatched", { withCredentials: true });
+      setUnmatched(Array.isArray(res.data) ? res.data : []);
+    } catch { setUnmatched([]); }
+    finally { setLoading(false); }
+  };
+
+  const handleSendAlerts = async () => {
+    setAlertSending(true);
+    try {
+      const res = await axios.post("/api/admin/send-overdue-alerts", {}, { withCredentials: true });
+      const { sent, skipped, failed } = res.data;
+      addToast(`Alerts sent: ${sent} sent, ${skipped} skipped, ${failed} failed.`, failed > 0 ? "warn" : "success");
+    } catch (err) {
+      addToast(err.response?.data?.error || "Failed to send alerts.", "error");
+    } finally { setAlertSending(false); }
+  };
+
   const TABS = [
-    { id: "actions", label: "Actions" },
-    { id: "audit",   label: "Audit Log" },
+    { id: "actions",   label: "Actions" },
+    { id: "overdue",   label: "Overdue" },
+    { id: "unmatched", label: "Unmatched" },
+    { id: "audit",     label: "Audit Log" },
   ];
+
+  const overdueCount = overdue.filter(b => b.days_out >= 14).length;
 
   return (
     <>
@@ -778,8 +836,11 @@ function AdminDrawer({ open, onClose, books, onAddBook, onUpload }) {
         <div className="drawer-tabs">
           {TABS.map(t => (
             <button key={t.id} className={`drawer-tab ${tab === t.id ? "drawer-tab-active" : ""}`}
-              onClick={() => { setTab(t.id); if (t.id === "audit") loadAudit(); }}>
+              onClick={() => setTab(t.id)}>
               {t.label}
+              {t.id === "overdue" && overdueCount > 0 && (
+                <span className="tab-badge tab-badge-warn">{overdueCount}</span>
+              )}
             </button>
           ))}
         </div>
@@ -809,6 +870,70 @@ function AdminDrawer({ open, onClose, books, onAddBook, onUpload }) {
                 </div>
               </button>
             </div>
+
+          ) : tab === "overdue" ? (
+            loading ? (
+              <div className="drawer-loading"><div className="loading-pulse"><div className="pulse-dot"/><div className="pulse-dot"/><div className="pulse-dot"/></div></div>
+            ) : overdue.length === 0 ? (
+              <div className="drawer-empty">No books currently checked out.</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:"1rem" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span className="section-label" style={{margin:0}}>
+                    {overdue.length} out · {overdueCount} overdue (&gt;14 days)
+                  </span>
+                  <button className="btn btn-sm btn-primary" onClick={handleSendAlerts} disabled={alertSending}>
+                    {alertSending ? <span className="spinner" /> : "Send Reminders"}
+                  </button>
+                </div>
+                <div className="circ-list">
+                  {overdue.map((b, i) => {
+                    const isOverdue = b.days_out >= 14;
+                    return (
+                      <div key={i} className={`circ-entry overdue-entry ${isOverdue ? "overdue-flagged" : ""}`}>
+                        <div className={`circ-dot ${isOverdue ? "dot-overdue" : "dot-out"}`} />
+                        <div className="circ-info">
+                          <span className="circ-title">{b.title || b.isbn}</span>
+                          <span className="circ-meta">
+                            <strong>{b.checked_out_by}</strong>
+                            {b.patron_email && <> · {b.patron_email}</>}
+                            {b.patron_phone && <> · {b.patron_phone}</>}
+                          </span>
+                          <span className={`circ-date ${isOverdue ? "overdue-days" : ""}`}>
+                            {b.days_out} day{b.days_out !== 1 ? "s" : ""} out
+                            {isOverdue && " — OVERDUE"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+
+          ) : tab === "unmatched" ? (
+            loading ? (
+              <div className="drawer-loading"><div className="loading-pulse"><div className="pulse-dot"/><div className="pulse-dot"/><div className="pulse-dot"/></div></div>
+            ) : unmatched.length === 0 ? (
+              <div className="drawer-empty">All books have matched metadata.</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:".5rem" }}>
+                <p className="section-label">{unmatched.length} book{unmatched.length !== 1 ? "s" : ""} with no metadata match</p>
+                <div className="circ-list">
+                  {unmatched.map((b, i) => (
+                    <div key={i} className="circ-entry">
+                      <div className="circ-dot dot-out" />
+                      <div className="circ-info">
+                        <span className="circ-title" style={{fontFamily:"monospace",fontSize:".85rem"}}>{b.isbn}</span>
+                        <span className="circ-meta">{b.title || "Unknown Title"}</span>
+                        {b.error && <span className="circ-date" style={{color:"var(--red)"}}>{b.error}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+
           ) : tab === "audit" ? (
             loading ? (
               <div className="drawer-loading"><div className="loading-pulse"><div className="pulse-dot"/><div className="pulse-dot"/><div className="pulse-dot"/></div></div>
@@ -1213,6 +1338,7 @@ export default function App() {
         .btn-primary { background: var(--green); color: #fff; }
         .btn-primary:hover { background: var(--green-lt); box-shadow: 0 4px 12px rgba(26,107,74,.25); }
         .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+        .btn-sm { padding: .35rem .75rem; font-size: .8rem; }
         .btn-accent { background: var(--green); color: #fff; }
         .btn-accent:hover { background: var(--green-lt); }
         .btn-accent:disabled { opacity: .5; cursor: not-allowed; }
@@ -1639,6 +1765,21 @@ export default function App() {
         .text-input:focus { border-color: var(--green-mid); box-shadow: 0 0 0 3px rgba(82,183,136,.15); }
         .return-note { font-size: .9rem; color: var(--text-mid); }
         .return-note strong { color: var(--text); }
+        .field-row { display: flex; gap: .75rem; }
+        .field-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .35rem; }
+        .field-required { color: var(--red, #dc2626); }
+        .field-hint { font-size: .78rem; color: var(--text-faint, var(--text-mid)); margin: 0; }
+        .tab-badge { display:inline-flex; align-items:center; justify-content:center;
+          min-width:1.1rem; height:1.1rem; border-radius:999px; font-size:.65rem; font-weight:700;
+          padding:0 .3rem; margin-left:.4rem; }
+        .tab-badge-warn { background:#fef3c7; color:#92400e; }
+        .dot-overdue { background: #dc2626; }
+        .overdue-flagged { background: #fff7f7; border-left: 3px solid #dc2626; border-radius: 0 var(--radius) var(--radius) 0; }
+        .overdue-days { color: #dc2626; font-weight: 600; }
+        @media (prefers-color-scheme: dark) {
+          .overdue-flagged { background: rgba(220,38,38,.08); }
+          .tab-badge-warn { background: rgba(146,64,14,.3); color:#fcd34d; }
+        }
 
         .drop-zone {
           border: 2px dashed var(--border);
@@ -1797,7 +1938,6 @@ export default function App() {
           </div>
           <div className="header-actions">
             <button className="btn-circ" onClick={()=>setShowCirc(true)}><ClipboardIcon /> Circulation</button>
-            <button className="btn btn-outline" onClick={loadBooks} disabled={loading}><RefreshIcon /></button>
             <button className="btn btn-primary" onClick={()=>setShowAdmin(true)}><GearIcon /> Admin</button>
           </div>
         </header>
@@ -1894,7 +2034,7 @@ export default function App() {
         </main>
       </div>
 
-      <AdminDrawer open={showAdmin} onClose={()=>setShowAdmin(false)} books={books} onAddBook={()=>setShowLookup(true)} onUpload={()=>setShowUpload(true)} />
+      <AdminDrawer open={showAdmin} onClose={()=>setShowAdmin(false)} books={books} onAddBook={()=>setShowLookup(true)} onUpload={()=>setShowUpload(true)} addToast={addToast} />
       <CirculationDrawer open={showCirc} onClose={()=>setShowCirc(false)} books={books} />
       {showLookup   && <ISBNLookupModal onSuccess={loadBooks} addToast={addToast} onClose={()=>setShowLookup(false)} existingBooks={books}/>}
       {checkoutBook && <CheckoutModal book={checkoutBook} onClose={()=>setCheckoutBook(null)} onSuccess={loadBooks} addToast={addToast}/>}
