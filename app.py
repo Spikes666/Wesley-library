@@ -11,7 +11,8 @@ import pandas as pd
 
 from db import (
     fetch_books, fetch_book_by_isbn, upsert_books,
-    checkout_book, return_book, fetch_circulation_log, fetch_stats
+    checkout_book, return_book, fetch_circulation_log, fetch_stats,
+    fetch_overdue_books, fetch_unmatched_books,
 )
 from enrich import enrich_metadata
 from isbn_tools import resolve_isbn, batch_resolve_csv
@@ -71,11 +72,13 @@ def get_stats():
 @app.route("/api/checkout", methods=["POST"])
 def do_checkout():
     data = request.json or {}
-    isbn = data.get("isbn", "").strip()
-    user = data.get("user", "").strip()
+    isbn  = data.get("isbn", "").strip()
+    user  = data.get("user", "").strip()
+    email = data.get("email", "").strip()
+    phone = data.get("phone", "").strip()
     if not isbn or not user:
         return jsonify({"error": "Missing isbn or user"}), 400
-    success, msg = checkout_book(isbn, user)
+    success, msg = checkout_book(isbn, user, email=email, phone=phone)
     return jsonify({"success": success, "message": msg}), (200 if success else 400)
 
 
@@ -170,14 +173,41 @@ def admin_circulation():
         return jsonify(fetch_circulation_log(limit))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-    
+
+
 @app.route("/api/admin/audit-log", methods=["GET"])
 def get_audit_log():
     try:
         limit = int(request.args.get("limit", 200))
         from db import fetch_audit_log
         return jsonify(fetch_audit_log(limit))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/overdue", methods=["GET"])
+def get_overdue():
+    try:
+        return jsonify(fetch_overdue_books())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/unmatched", methods=["GET"])
+def get_unmatched():
+    try:
+        return jsonify(fetch_unmatched_books())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/send-overdue-alerts", methods=["POST"])
+def send_overdue_alerts():
+    try:
+        from alerts import send_overdue_emails
+        books = fetch_overdue_books(days=14)
+        results = send_overdue_emails(books)
+        return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

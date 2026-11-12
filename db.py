@@ -156,7 +156,8 @@ def upsert_books(books: list[dict], source: str = "system") -> int:
 
 # ── Circulation ───────────────────────────────────────────────────────────────
 
-def checkout_book(isbn: str, user: str) -> tuple[bool, str]:
+def checkout_book(isbn: str, user: str,
+                  email: str = "", phone: str = "") -> tuple[bool, str]:
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -167,13 +168,17 @@ def checkout_book(isbn: str, user: str) -> tuple[bool, str]:
         if row[0]:
             return False, f"Already checked out by {row[0]}."
         cursor.execute(
-            "UPDATE WESLEY_LIBRARY SET Checked_Out_By = %s WHERE ISBN = %s",
-            (user, isbn)
+            """UPDATE WESLEY_LIBRARY
+               SET Checked_Out_By = %s, Checked_Out_At = CURRENT_TIMESTAMP(),
+                   Patron_Email = %s, Patron_Phone = %s
+               WHERE ISBN = %s""",
+            (user, email or None, phone or None, isbn)
         )
         cursor.execute("""
-            INSERT INTO CHECKOUTS_WESLEY (ISBN, ACTION, CHECKED_OUT_BY, CHECKED_OUT_AT, NOTES)
-            VALUES (%s, 'checkout', %s, CURRENT_TIMESTAMP(), 'Web checkout')
-        """, (isbn, user))
+            INSERT INTO CHECKOUTS_WESLEY
+                (ISBN, ACTION, CHECKED_OUT_BY, CHECKED_OUT_AT, PATRON_EMAIL, PATRON_PHONE, NOTES)
+            VALUES (%s, 'checkout', %s, CURRENT_TIMESTAMP(), %s, %s, 'Web checkout')
+        """, (isbn, user, email or None, phone or None))
         conn.commit()
         return True, "Book successfully checked out."
     finally:
@@ -185,20 +190,28 @@ def return_book(isbn: str) -> tuple[bool, str]:
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT Checked_Out_By FROM WESLEY_LIBRARY WHERE ISBN = %s", (isbn,))
+        cursor.execute(
+            "SELECT Checked_Out_By, Patron_Email, Patron_Phone FROM WESLEY_LIBRARY WHERE ISBN = %s",
+            (isbn,)
+        )
         row = cursor.fetchone()
         if not row:
             return False, "Book not found."
         if not row[0]:
             return False, "Book is not currently checked out."
+        patron, email, phone = row
         cursor.execute(
-            "UPDATE WESLEY_LIBRARY SET Checked_Out_By = NULL WHERE ISBN = %s",
+            """UPDATE WESLEY_LIBRARY
+               SET Checked_Out_By = NULL, Checked_Out_At = NULL,
+                   Patron_Email = NULL, Patron_Phone = NULL
+               WHERE ISBN = %s""",
             (isbn,)
         )
         cursor.execute("""
-            INSERT INTO CHECKOUTS_WESLEY (ISBN, ACTION, CHECKED_OUT_BY, CHECKED_OUT_AT, NOTES)
-            VALUES (%s, 'checkin', NULL, CURRENT_TIMESTAMP(), 'Web return')
-        """, (isbn,))
+            INSERT INTO CHECKOUTS_WESLEY
+                (ISBN, ACTION, CHECKED_OUT_BY, CHECKED_OUT_AT, PATRON_EMAIL, PATRON_PHONE, NOTES)
+            VALUES (%s, 'checkin', %s, CURRENT_TIMESTAMP(), %s, %s, 'Web return')
+        """, (isbn, patron, email, phone))
         conn.commit()
         return True, "Book successfully returned."
     finally:
@@ -212,12 +225,58 @@ def fetch_circulation_log(limit: int = 100) -> list[dict]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT c.ISBN, w.Title, c.ACTION, c.CHECKED_OUT_BY,
-                   c.CHECKED_OUT_AT, c.NOTES
+                   c.CHECKED_OUT_AT, c.PATRON_EMAIL, c.PATRON_PHONE, c.NOTES
             FROM CHECKOUTS_WESLEY c
             LEFT JOIN WESLEY_LIBRARY w ON c.ISBN = w.ISBN
             ORDER BY c.CHECKED_OUT_AT DESC
             LIMIT %s
         """, (limit,))
+        columns = [col[0].lower() for col in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_overdue_books(days: int = 14) -> list[dict]:
+    """Return books currently checked out for >= `days` days, oldest first."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ISBN, Title, Checked_Out_By, Checked_Out_At,
+                   Patron_Email, Patron_Phone,
+                   DATEDIFF('day', Checked_Out_At, CURRENT_TIMESTAMP()) AS days_out
+            FROM WESLEY_LIBRARY
+            WHERE Checked_Out_By IS NOT NULL
+              AND Checked_Out_At IS NOT NULL
+            ORDER BY Checked_Out_At ASC
+        """)
+        columns = [col[0].lower() for col in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        # Convert timestamps to ISO strings for JSON serialisation
+        for r in rows:
+            if r.get("checked_out_at"):
+                r["checked_out_at"] = r["checked_out_at"].isoformat()
+        return rows
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def fetch_unmatched_books() -> list[dict]:
+    """Return books where metadata lookup failed — Unknown title or Source = Not Found."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ISBN, Title, Author, Source, Error
+            FROM WESLEY_LIBRARY
+            WHERE UPPER(COALESCE(Title, '')) IN ('UNKNOWN', 'UNKNOWN TITLE')
+               OR Source = 'Not Found'
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY ISBN ORDER BY Title) = 1
+            ORDER BY ISBN
+        """)
         columns = [col[0].lower() for col in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
     finally:
