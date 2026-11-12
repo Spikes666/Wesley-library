@@ -36,7 +36,6 @@ services:
   - type: web
     name: wesley-library
     runtime: static
-    plan: free
     buildCommand: cd church-library-frontend && npm ci && npm run build
     staticPublishPath: church-library-frontend/dist
     headers:
