@@ -41,25 +41,16 @@ def debug_snowflake():
     except Exception as e:
         return jsonify({"dns": "failed", "host": host, "error": str(e)})
 
-    import concurrent.futures
-    def try_connect():
+    try:
         from snowflake_conn import get_connection
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("SELECT CURRENT_USER()")
         row = cur.fetchone()
         conn.close()
-        return row[0]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        future = ex.submit(try_connect)
-        try:
-            user = future.result(timeout=25)
-            return jsonify({**dns_result, "snowflake": "ok", "user": user})
-        except concurrent.futures.TimeoutError:
-            return jsonify({**dns_result, "snowflake": "timeout", "message": "no response after 25s"})
-        except Exception as e:
-            return jsonify({**dns_result, "snowflake": "failed", "error": str(e)})
+        return jsonify({**dns_result, "snowflake": "ok", "user": row[0]})
+    except Exception as e:
+        return jsonify({**dns_result, "snowflake": "failed", "error": str(e)})
 
 
 # ── Public: Catalog ───────────────────────────────────────────────────────────
