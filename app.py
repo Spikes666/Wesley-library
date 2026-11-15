@@ -41,6 +41,17 @@ def debug_snowflake():
     except Exception as e:
         return jsonify({"dns": "failed", "host": host, "error": str(e)})
 
+    import ssl
+    host = dns_result["host"]
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((host, 443), timeout=10) as raw:
+            with ctx.wrap_socket(raw, server_hostname=host) as tls:
+                cipher = tls.cipher()
+        tls_result = {"tls": "ok", "cipher": cipher[0]}
+    except Exception as e:
+        tls_result = {"tls": "failed", "error": str(e)}
+
     try:
         from snowflake_conn import get_connection
         conn = get_connection()
@@ -48,9 +59,9 @@ def debug_snowflake():
         cur.execute("SELECT CURRENT_USER()")
         row = cur.fetchone()
         conn.close()
-        return jsonify({**dns_result, "snowflake": "ok", "user": row[0]})
+        return jsonify({**dns_result, **tls_result, "snowflake": "ok", "user": row[0]})
     except Exception as e:
-        return jsonify({**dns_result, "snowflake": "failed", "error": str(e)})
+        return jsonify({**dns_result, **tls_result, "snowflake": "failed", "error": str(e)})
 
 
 # ── Public: Catalog ───────────────────────────────────────────────────────────
