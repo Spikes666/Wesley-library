@@ -26,13 +26,23 @@ load_dotenv()
 
 
 def _load_private_key() -> bytes | None:
-    """Load and serialize the private key for JWT auth. Returns None if unavailable."""
-    key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "").strip()
-    if not key_path or not os.path.exists(key_path):
-        return None
+    """Load and serialize the private key for JWT auth. Returns None if unavailable.
 
-    with open(key_path, "rb") as key_file:
-        raw = key_file.read()
+    Checks (in order):
+      1. SNOWFLAKE_PRIVATE_KEY_B64 env var — base64-encoded PEM (for Render/cloud)
+      2. SNOWFLAKE_PRIVATE_KEY_PATH env var — path to PEM/DER file (for local dev)
+    """
+    import base64
+
+    b64 = os.environ.get("SNOWFLAKE_PRIVATE_KEY_B64", "").strip()
+    if b64:
+        raw = base64.b64decode(b64)
+    else:
+        key_path = os.environ.get("SNOWFLAKE_PRIVATE_KEY_PATH", "").strip()
+        if not key_path or not os.path.exists(key_path):
+            return None
+        with open(key_path, "rb") as key_file:
+            raw = key_file.read()
 
     try:
         p_key = serialization.load_pem_private_key(raw, password=None, backend=default_backend())
