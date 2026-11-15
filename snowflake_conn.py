@@ -67,6 +67,8 @@ def get_connection() -> snowflake.connector.SnowflakeConnection:
         database=os.environ["SNOWFLAKE_DATABASE"],
         schema=os.environ["SNOWFLAKE_SCHEMA"],
         role=os.environ.get("SNOWFLAKE_ROLE", ""),
+        login_timeout=30,
+        network_timeout=30,
     )
 
     if private_key:
