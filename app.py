@@ -37,9 +37,20 @@ def debug_snowflake():
     host = f"{account}.snowflakecomputing.com"
     try:
         addrs = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-        return jsonify({"dns": "ok", "host": host, "addrs": [str(a) for a in addrs[:2]]})
+        dns_result = {"dns": "ok", "host": host, "addrs": [str(a) for a in addrs[:2]]}
     except Exception as e:
         return jsonify({"dns": "failed", "host": host, "error": str(e)})
+
+    try:
+        from snowflake_conn import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT CURRENT_USER()")
+        row = cur.fetchone()
+        conn.close()
+        return jsonify({**dns_result, "snowflake": "ok", "user": row[0]})
+    except Exception as e:
+        return jsonify({**dns_result, "snowflake": "failed", "error": str(e)})
 
 
 # ── Public: Catalog ───────────────────────────────────────────────────────────
