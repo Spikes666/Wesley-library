@@ -69,6 +69,8 @@ def get_connection() -> snowflake.connector.SnowflakeConnection:
         role=os.environ.get("SNOWFLAKE_ROLE", ""),
         login_timeout=30,
         network_timeout=30,
+        ocsp_response_cache_filename="/dev/null",
+        insecure_mode=True,
     )
 
     if private_key:
