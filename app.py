@@ -30,6 +30,18 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/debug/snowflake", methods=["GET"])
+def debug_snowflake():
+    import socket, os
+    account = os.environ.get("SNOWFLAKE_ACCOUNT", "")
+    host = f"{account}.snowflakecomputing.com"
+    try:
+        addrs = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+        return jsonify({"dns": "ok", "host": host, "addrs": [str(a) for a in addrs[:2]]})
+    except Exception as e:
+        return jsonify({"dns": "failed", "host": host, "error": str(e)})
+
+
 # ── Public: Catalog ───────────────────────────────────────────────────────────
 
 @app.route("/api/books", methods=["GET"])
