@@ -30,47 +30,6 @@ def health():
     return jsonify({"status": "ok"})
 
 
-@app.route("/debug/snowflake", methods=["GET"])
-def debug_snowflake():
-    import socket, os
-    account = os.environ.get("SNOWFLAKE_ACCOUNT", "")
-    host = f"{account}.snowflakecomputing.com"
-    try:
-        addrs = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-        dns_result = {"dns": "ok", "host": host, "addrs": [str(a) for a in addrs[:2]]}
-    except Exception as e:
-        return jsonify({"dns": "failed", "host": host, "error": str(e)})
-
-    import ssl
-    host = dns_result["host"]
-    try:
-        ctx = ssl.create_default_context()
-        with socket.create_connection((host, 443), timeout=10) as raw:
-            with ctx.wrap_socket(raw, server_hostname=host) as tls:
-                cipher = tls.cipher()
-        tls_result = {"tls": "ok", "cipher": cipher[0]}
-    except Exception as e:
-        tls_result = {"tls": "failed", "error": str(e)}
-
-    import requests as req
-    host = dns_result["host"]
-    try:
-        r = req.get(f"https://{host}/", timeout=10, verify=False)
-        http_result = {"http": "ok", "status": r.status_code, "server": r.headers.get("server", "")}
-    except Exception as e:
-        http_result = {"http": "failed", "error": str(e)}
-
-    try:
-        from snowflake_conn import get_connection
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT CURRENT_USER()")
-        row = cur.fetchone()
-        conn.close()
-        return jsonify({**dns_result, **tls_result, **http_result, "snowflake": "ok", "user": row[0]})
-    except Exception as e:
-        return jsonify({**dns_result, **tls_result, **http_result, "snowflake": "failed", "error": str(e)})
-
 
 # ── Public: Catalog ───────────────────────────────────────────────────────────
 
